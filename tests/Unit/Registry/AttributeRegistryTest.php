@@ -8,6 +8,10 @@ use RoundlyConsulting\Attributes\Enums\AttributeType;
 use RoundlyConsulting\Attributes\Exceptions\InvalidAttributeValueException;
 use RoundlyConsulting\Attributes\Exceptions\UnknownAttributeException;
 use RoundlyConsulting\Attributes\Registry\AttributeRegistry;
+use RoundlyConsulting\Attributes\Tests\Models\DefinedProduct;
+use RoundlyConsulting\Attributes\Tests\Models\MalformedDefProduct;
+use RoundlyConsulting\Attributes\Tests\Models\MethodProduct;
+use RoundlyConsulting\Attributes\Tests\Models\Product;
 
 beforeEach(function (): void {
     $this->registry = new AttributeRegistry;
@@ -123,4 +127,92 @@ it('skips malformed config entries and defaults bad types to string', function (
     expect($registry->has('good'))->toBeTrue()
         ->and($registry->get('good')?->type)->toBe(AttributeType::String_)
         ->and($registry->has('bad'))->toBeFalse();
+});
+
+it('reports required names from definitions', function (): void {
+    $this->registry->defineMany(
+        new AttributeDefinitionData('a', AttributeType::String_, required: true),
+        new AttributeDefinitionData('b', AttributeType::String_),
+        new AttributeDefinitionData('c', AttributeType::Integer, required: true),
+    );
+
+    expect($this->registry->requiredNames())->toBe(['a', 'c']);
+});
+
+it('returns the declared default for a name', function (): void {
+    $this->registry->define(new AttributeDefinitionData('retries', AttributeType::Integer, default: 3));
+
+    expect($this->registry->default('retries'))->toBe(3)
+        ->and($this->registry->default('missing'))->toBeNull();
+});
+
+it('resolves a model definition over the global one', function (): void {
+    $this->registry->define(new AttributeDefinitionData('rating', AttributeType::String_));
+
+    $product = DefinedProduct::query()->create();
+
+    expect($this->registry->resolveFor($product, 'rating')?->type)->toBe(AttributeType::Integer)
+        ->and($this->registry->resolveFor(null, 'rating')?->type)->toBe(AttributeType::String_);
+});
+
+it('merges global and model definitions for an owner', function (): void {
+    $this->registry->define(new AttributeDefinitionData('global_only', AttributeType::String_));
+
+    $product = DefinedProduct::query()->create();
+
+    $merged = $this->registry->definitionsFor($product);
+
+    expect($merged)->toHaveKey('global_only')
+        ->and($merged)->toHaveKey('rating')
+        ->and($merged)->toHaveKey('token');
+});
+
+it('reads model definitions declared as a method', function (): void {
+    $product = MethodProduct::query()->create();
+
+    expect($this->registry->resolveFor($product, 'level')?->default)->toBe(7);
+});
+
+it('validates against a model definition', function (): void {
+    $product = DefinedProduct::query()->create();
+
+    $this->registry->validateFor($product, 'rating', 99);
+})->throws(InvalidAttributeValueException::class);
+
+it('builds a bulk read helper for an owner', function (): void {
+    $product = Product::query()->create();
+    $product->attachAttribute('color', 'white');
+
+    expect($this->registry->for($product)->get('color'))->toBe('white');
+});
+
+it('names the failing key in validation messages', function (): void {
+    $this->registry->define(new AttributeDefinitionData('rating', AttributeType::Integer, rules: ['min:1', 'max:5']));
+
+    try {
+        $this->registry->validate('rating', 99);
+    } catch (InvalidAttributeValueException $exception) {
+        expect($exception->attributeName)->toBe('rating')
+            ->and($exception->errorBag())->not->toBeNull()
+            ->and($exception->messages())->each->toStartWith('rating:');
+
+        return;
+    }
+
+    $this->fail('Expected InvalidAttributeValueException.');
+});
+
+it('skips non-array model definition entries', function (): void {
+    $owner = MalformedDefProduct::query()->create();
+
+    $merged = $this->registry->definitionsFor($owner);
+
+    expect($merged)->toHaveKey('good')
+        ->and($merged)->not->toHaveKey('bad');
+});
+
+it('returns an empty set for a model without definitions', function (): void {
+    $owner = Product::query()->create();
+
+    expect($this->registry->definitionsFor($owner))->toBe([]);
 });

@@ -3,8 +3,13 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
+use RoundlyConsulting\Attributes\Casts\AttributeValue;
+use RoundlyConsulting\Attributes\DataTransferObjects\AttributeDefinitionData;
 use RoundlyConsulting\Attributes\Enums\AttributeType;
+use RoundlyConsulting\Attributes\Facades\Attributes;
 use RoundlyConsulting\Attributes\Models\Attribute;
+use RoundlyConsulting\Attributes\Tests\Models\Product;
 
 it('persists and reads typed values through the model', function (mixed $value): void {
     $attribute = Attribute::factory()->create([
@@ -67,4 +72,69 @@ it('returns null for a null value', function (): void {
     ]);
 
     expect($attribute->fresh()->value)->toBeNull();
+});
+
+it('writes plaintext and false is_encrypted for undefined attributes', function (): void {
+    $attribute = Attribute::factory()->create([
+        'owner_type' => 'product',
+        'owner_id' => 1,
+        'name' => 'color',
+        'value' => 'white',
+    ]);
+
+    $row = DB::table('attributes')->where('id', $attribute->id)->first();
+
+    expect($row->value)->toBe('white')
+        ->and((int) $row->is_encrypted)->toBe(0);
+});
+
+it('encrypts a value defined as encrypted and decrypts it on read', function (): void {
+    Attributes::define(
+        new AttributeDefinitionData(
+            'token',
+            AttributeType::String_,
+            encrypted: true,
+        ),
+    );
+
+    $product = Product::query()->create();
+    $product->attachAttribute('token', 'hunter2');
+
+    $row = DB::table('attributes')->where('name', 'token')->first();
+
+    expect($row->value)->not->toBe('hunter2')
+        ->and((int) $row->is_encrypted)->toBe(1)
+        ->and($product->fresh()->getAttachedAttributeValue('token'))->toBe('hunter2');
+});
+
+it('leaves a row plaintext when the name is missing from attributes', function (): void {
+    // Direct cast read with no name in attributes resolves to no definition.
+    $cast = new AttributeValue;
+    $model = new Attribute;
+
+    $result = $cast->set($model, 'value', 'plain', []);
+
+    expect($result['is_encrypted'])->toBeFalse();
+});
+
+it('rebuilds the owner from morph type when the relation is not loaded', function (): void {
+    Attributes::define(
+        new AttributeDefinitionData(
+            'token',
+            AttributeType::String_,
+            encrypted: true,
+        ),
+    );
+
+    $cast = new AttributeValue;
+    $model = new Attribute;
+
+    $result = $cast->set($model, 'value', 'secret', [
+        'name' => 'token',
+        'owner_type' => Product::class,
+        'owner_id' => 1,
+    ]);
+
+    expect($result['is_encrypted'])->toBeTrue()
+        ->and($result['value'])->not->toBe('secret');
 });

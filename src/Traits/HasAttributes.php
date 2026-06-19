@@ -17,8 +17,12 @@ use RoundlyConsulting\Attributes\Actions\SyncAttributesAction;
 use RoundlyConsulting\Attributes\Builders\AttributeWriter;
 use RoundlyConsulting\Attributes\Contracts\HasAttributes as HasAttributesContract;
 use RoundlyConsulting\Attributes\DataTransferObjects\AttributeData;
+use RoundlyConsulting\Attributes\Exceptions\MissingRequiredAttributeException;
 use RoundlyConsulting\Attributes\Models\Attribute;
+use RoundlyConsulting\Attributes\Models\AttributeRevision;
+use RoundlyConsulting\Attributes\Registry\AttributeRegistry;
 use RoundlyConsulting\Attributes\Support\AttributeValueCaster;
+use RoundlyConsulting\Attributes\Support\StoredAttributeValue;
 
 /**
  * @mixin Model
@@ -41,6 +45,33 @@ trait HasAttributes
         $relation = $this->morphMany($model, 'owner');
 
         return $relation;
+    }
+
+    /**
+     * Revisions recorded for this owner's attributes (newest first).
+     *
+     * @return MorphMany<AttributeRevision, $this>
+     */
+    public function attributeHistory(?string $name = null): MorphMany
+    {
+        /** @var MorphMany<AttributeRevision, $this> $relation */
+        $relation = $this->morphMany(AttributeRevision::class, 'owner')->latest('id');
+
+        if ($name !== null) {
+            $relation->where('name', $name);
+        }
+
+        return $relation;
+    }
+
+    /**
+     * Read the recorded revisions, optionally filtered by attribute name.
+     *
+     * @return Collection<int, AttributeRevision>
+     */
+    public function history(?string $name = null): Collection
+    {
+        return $this->attributeHistory($name)->get();
     }
 
     /**
@@ -85,7 +116,9 @@ trait HasAttributes
 
     public function getAttachedAttributeValue(string $name): mixed
     {
-        return $this->getAttachedAttribute($name)?->value;
+        $value = $this->getAttachedAttribute($name)?->value;
+
+        return $value ?? $this->defaultFor($name);
     }
 
     public function getAttachedAttributeValueAsString(string $name): ?string
@@ -97,6 +130,14 @@ trait HasAttributes
         }
 
         return new AttributeValueCaster()->toStorage($attribute->value, $attribute->type())->value;
+    }
+
+    /**
+     * A typed value object for a single attribute, with defaults applied.
+     */
+    public function attr(string $name): StoredAttributeValue
+    {
+        return new StoredAttributeValue($this->getAttachedAttributeValue($name));
     }
 
     public function attributeInt(string $name): ?int
@@ -151,6 +192,28 @@ trait HasAttributes
     public function getAttachedAttributeMeta(string $name): ?Collection
     {
         return $this->getAttachedAttribute($name)?->meta;
+    }
+
+    /**
+     * Assert every required attribute is present and current values are valid.
+     *
+     * @throws MissingRequiredAttributeException
+     */
+    public function validateAttributes(): void
+    {
+        $registry = app(AttributeRegistry::class);
+
+        foreach ($registry->definitionsFor($this) as $definition) {
+            $hasValue = $this->hasAttachedAttribute($definition->name);
+
+            if ($definition->required && ! $hasValue) {
+                throw MissingRequiredAttributeException::forName($definition->name);
+            }
+
+            if ($hasValue) {
+                $registry->validateFor($this, $definition->name, $this->getAttachedAttributeValue($definition->name));
+            }
+        }
     }
 
     /**
@@ -265,6 +328,53 @@ trait HasAttributes
     }
 
     /**
+     * Filter owners whose attribute value falls within the (inclusive) bounds.
+     *
+     * Bounds are cast to their storage string and compared. Reliable for
+     * ISO-8601 datetimes and strings; integer ranges are zero-pad-sensitive.
+     *
+     * @param  Builder<Model>  $query
+     */
+    public function scopeWhereAttributeBetween(Builder $query, string $name, mixed $min, mixed $max): void
+    {
+        $caster = new AttributeValueCaster;
+
+        $low = $caster->toStorage($min)->value;
+        $high = $caster->toStorage($max)->value;
+
+        $query->whereHas('attachedAttributes', function (Builder $sub) use ($name, $low, $high): void {
+            /** @var Builder<Attribute> $sub */
+            $sub->where('name', $name)->whereBetween('value', [$low, $high]);
+        });
+    }
+
+    /**
+     * Filter owners with the attribute present but its value SQL NULL.
+     *
+     * @param  Builder<Model>  $query
+     */
+    public function scopeWhereAttributeNull(Builder $query, string $name): void
+    {
+        $query->whereHas('attachedAttributes', function (Builder $sub) use ($name): void {
+            /** @var Builder<Attribute> $sub */
+            $sub->where('name', $name)->whereNull('value');
+        });
+    }
+
+    /**
+     * Filter owners with the attribute present and its value not SQL NULL.
+     *
+     * @param  Builder<Model>  $query
+     */
+    public function scopeWhereAttributeNotNull(Builder $query, string $name): void
+    {
+        $query->whereHas('attachedAttributes', function (Builder $sub) use ($name): void {
+            /** @var Builder<Attribute> $sub */
+            $sub->where('name', $name)->whereNotNull('value');
+        });
+    }
+
+    /**
      * @param  Builder<Model>  $query
      */
     public function scopeWhereHasAttribute(Builder $query, string $name): void
@@ -307,6 +417,14 @@ trait HasAttributes
             ->limit(1);
 
         $query->orderBy($subQuery, $direction);
+    }
+
+    /**
+     * The default value declared for a name, honouring per-model definitions.
+     */
+    private function defaultFor(string $name): mixed
+    {
+        return app(AttributeRegistry::class)->default($name, $this);
     }
 
     /**

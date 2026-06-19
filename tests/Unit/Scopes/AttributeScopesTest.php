@@ -59,3 +59,50 @@ it('scopes attributes for a given owner', function (): void {
     expect(Attribute::query()->forOwner($this->white)->count())->toBe(3)
         ->and(Attribute::query()->forOwner($this->black)->count())->toBe(2);
 });
+
+it('filters by a string range', function (): void {
+    $results = Product::query()->whereAttributeBetween('color', 'a', 'c')->get();
+
+    expect($results)->toHaveCount(1)
+        ->and($results->first()?->is($this->black))->toBeTrue();
+});
+
+it('filters by a datetime range', function (): void {
+    $early = Product::create();
+    $early->attachAttribute('due_at', '2026-01-01T00:00:00+00:00');
+
+    $late = Product::create();
+    $late->attachAttribute('due_at', '2026-12-01T00:00:00+00:00');
+
+    $results = Product::query()->whereAttributeBetween(
+        'due_at',
+        '2026-06-01T00:00:00+00:00',
+        '2026-12-31T00:00:00+00:00',
+    )->get();
+
+    expect($results)->toHaveCount(1)
+        ->and($results->first()?->is($late))->toBeTrue();
+});
+
+it('filters owners whose attribute value is null', function (): void {
+    $nulled = Product::create();
+    $nulled->attachAttribute('note', null);
+
+    $results = Product::query()->whereAttributeNull('note')->get();
+
+    expect($results)->toHaveCount(1)
+        ->and($results->first()?->is($nulled))->toBeTrue();
+});
+
+it('filters owners whose attribute value is not null', function (): void {
+    $nulled = Product::create();
+    $nulled->attachAttribute('note', null);
+
+    $set = Product::create();
+    $set->attachAttribute('note', 'hello');
+
+    $results = Product::query()->whereAttributeNotNull('note')->get();
+
+    expect($results)->toHaveCount(1)
+        ->and($results->first()?->is($set))->toBeTrue();
+});
