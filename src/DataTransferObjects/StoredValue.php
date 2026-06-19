@@ -11,5 +11,6 @@ final readonly class StoredValue
     public function __construct(
         public ?string $value,
         public AttributeType $type,
+        public bool $encrypted = false,
     ) {}
 }

@@ -17,6 +17,7 @@ return new class extends Migration
             $table->string('name');
             $table->text('value')->nullable();
             $table->string('value_type')->nullable()->default(AttributeType::String_->value);
+            $table->boolean('is_encrypted')->default(false)->after('value_type');
             $table->json('meta')->nullable();
             $table->timestamps();
             $table->softDeletes();

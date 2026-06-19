@@ -44,6 +44,13 @@ final class AttributeFactory extends Factory
         return $this->ofType(AttributeType::Boolean, $value);
     }
 
+    public function encrypted(): self
+    {
+        return $this->state(fn (): array => [
+            'is_encrypted' => true,
+        ]);
+    }
+
     /**
      * @param  array<string, mixed>  $meta
      */

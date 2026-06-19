@@ -14,6 +14,7 @@ use Illuminate\Support\Collection;
 use RoundlyConsulting\Attributes\Casts\AttributeValue;
 use RoundlyConsulting\Attributes\Database\Factories\AttributeFactory;
 use RoundlyConsulting\Attributes\Enums\AttributeType;
+use RoundlyConsulting\Attributes\Support\AttributeCollection;
 
 /**
  * @property int $id
@@ -22,6 +23,7 @@ use RoundlyConsulting\Attributes\Enums\AttributeType;
  * @property string $name
  * @property mixed $value
  * @property string|null $value_type
+ * @property bool $is_encrypted
  * @property-read AttributeType $type
  * @property Collection<string, mixed>|null $meta
  * @property Carbon|null $created_at
@@ -92,6 +94,27 @@ final class Attribute extends Model
         $query->where('value_type', $type->value);
     }
 
+    /**
+     * Every attribute query and relation returns the richer collection.
+     *
+     * @param  array<int, Attribute>  $models
+     */
+    public function newCollection(array $models = []): AttributeCollection
+    {
+        return new AttributeCollection($models);
+    }
+
+    /**
+     * Load every attribute as the richer collection.
+     */
+    public static function collect(): AttributeCollection
+    {
+        /** @var AttributeCollection $collection */
+        $collection = self::query()->get();
+
+        return $collection;
+    }
+
     protected static function newFactory(): AttributeFactory
     {
         return AttributeFactory::new();
@@ -104,6 +127,7 @@ final class Attribute extends Model
     {
         return [
             'meta' => 'collection',
+            'is_encrypted' => 'boolean',
             'value' => AttributeValue::class,
         ];
     }
