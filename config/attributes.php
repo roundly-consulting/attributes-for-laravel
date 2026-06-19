@@ -59,17 +59,52 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | History / Audit Trail
+    |--------------------------------------------------------------------------
+    |
+    | When enabled, every attach/sync/detach records an old -> new revision in
+    | the attribute_revisions table, readable via $model->history(). Disabled
+    | by default so there is no table cost unless you opt in. Encrypted values
+    | are stored in their ciphertext form, so the audit log never leaks secrets.
+    |
+    */
+
+    'history' => [
+        'enabled' => env('ATTRIBUTES_HISTORY', false),
+        'table' => 'attribute_revisions',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Attribute Definitions
     |--------------------------------------------------------------------------
     |
     | Register known attributes with their type and validation rules. Each key
-    | is the attribute name; the value supports: type (one of AttributeType's
-    | backed values), rules (Laravel validation rules), required (bool), and
-    | default. Values are validated against these when attached.
+    | is the attribute name; the value supports:
+    |
+    |   - type:      one of AttributeType's backed values (string, integer,
+    |                float, boolean, array, datetime).
+    |   - rules:     additional Laravel validation rules.
+    |   - required:  bool; enforced by $model->validateAttributes().
+    |   - default:   value returned by typed reads when the attribute is unset.
+    |   - unique:    'owner' (unique per owner type), 'global' (unique across
+    |                every owner), true (= owner), or false/'none' (default).
+    |   - encrypted: bool; stores the value as ciphertext via Crypt at rest.
+    |
+    | Models may also declare their own definitions via a public
+    | attributeDefinitions() method or a $attributeDefinitions array property;
+    | those override same-named global definitions for that model only.
+    |
+    | Note: encrypted values cannot be matched by the whereAttribute* value
+    | scopes (ciphertext is non-deterministic), and whereAttributeBetween on
+    | the text column sorts lexicographically (reliable for ISO-8601 dates and
+    | strings; integer ranges are zero-pad-sensitive).
     |
     |   'definitions' => [
     |       'rating' => ['type' => 'integer', 'rules' => ['min:1', 'max:5']],
-    |       'color'  => ['type' => 'string', 'rules' => ['max:32']],
+    |       'sku'    => ['type' => 'string', 'unique' => 'global'],
+    |       'token'  => ['type' => 'string', 'encrypted' => true],
+    |       'retries'=> ['type' => 'integer', 'default' => 3],
     |   ],
     |
     */
