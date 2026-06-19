@@ -7,9 +7,8 @@ namespace RoundlyConsulting\Attributes;
 use Illuminate\Support\ServiceProvider;
 use RoundlyConsulting\Attributes\Commands\ListAttributesCommand;
 use RoundlyConsulting\Attributes\Commands\PruneAttributesCommand;
-use RoundlyConsulting\Attributes\DataTransferObjects\AttributeDefinitionData;
-use RoundlyConsulting\Attributes\Enums\AttributeType;
 use RoundlyConsulting\Attributes\Registry\AttributeRegistry;
+use RoundlyConsulting\Attributes\Registry\DefinitionFactory;
 
 final class AttributesServiceProvider extends ServiceProvider
 {
@@ -57,26 +56,7 @@ final class AttributesServiceProvider extends ServiceProvider
                 continue;
             }
 
-            $registry->define($this->makeDefinition((string) $name, $definition));
+            $registry->define(DefinitionFactory::fromArray((string) $name, $definition));
         }
-    }
-
-    /**
-     * @param  array<string, mixed>  $definition
-     */
-    private function makeDefinition(string $name, array $definition): AttributeDefinitionData
-    {
-        $type = $definition['type'] ?? AttributeType::String_->value;
-
-        /** @var list<string|object> $rules */
-        $rules = is_array($definition['rules'] ?? null) ? array_values($definition['rules']) : [];
-
-        return new AttributeDefinitionData(
-            name: $name,
-            type: is_string($type) ? AttributeType::tryFrom($type) ?? AttributeType::String_ : AttributeType::String_,
-            rules: $rules,
-            default: $definition['default'] ?? null,
-            required: (bool) ($definition['required'] ?? false),
-        );
     }
 }

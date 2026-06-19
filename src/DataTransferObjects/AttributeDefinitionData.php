@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace RoundlyConsulting\Attributes\DataTransferObjects;
 
 use RoundlyConsulting\Attributes\Enums\AttributeType;
+use RoundlyConsulting\Attributes\Enums\UniqueScope;
 
 final readonly class AttributeDefinitionData
 {
@@ -17,5 +18,7 @@ final readonly class AttributeDefinitionData
         public array $rules = [],
         public mixed $default = null,
         public bool $required = false,
+        public UniqueScope $unique = UniqueScope::None,
+        public bool $encrypted = false,
     ) {}
 }
