@@ -449,6 +449,72 @@ it('returns attribute meta data', function () {
         ]);
 });
 
+it('preserves value types on attach and read', function (): void {
+    $product = createProduct();
+
+    $product->attachAttribute('rating', 5);
+    $product->attachAttribute('on_sale', true);
+    $product->attachAttribute('price', 9.99);
+    $product->attachAttribute('tags', ['a', 'b']);
+
+    expect($product->getAttachedAttributeValue('rating'))->toBe(5)
+        ->and($product->getAttachedAttributeValue('on_sale'))->toBeTrue()
+        ->and($product->getAttachedAttributeValue('price'))->toBe(9.99)
+        ->and($product->getAttachedAttributeValue('tags'))->toBe(['a', 'b']);
+});
+
+it('exposes typed convenience readers', function (): void {
+    $product = createProduct();
+
+    $product->attachAttribute('rating', 5);
+    $product->attachAttribute('on_sale', true);
+    $product->attachAttribute('price', 9.5);
+    $product->attachAttribute('tags', ['a']);
+    $product->attachAttribute('published_at', '2026-06-19');
+
+    expect($product->attributeInt('rating'))->toBe(5)
+        ->and($product->attributeBool('on_sale'))->toBeTrue()
+        ->and($product->attributeFloat('price'))->toBe(9.5)
+        ->and($product->attributeArray('tags'))->toBe(['a'])
+        ->and($product->attributeDate('published_at')->toDateString())->toBe('2026-06-19');
+});
+
+it('returns null from typed readers for missing attributes', function (): void {
+    $product = createProduct();
+
+    expect($product->attributeInt('missing'))->toBeNull()
+        ->and($product->attributeBool('missing'))->toBeNull()
+        ->and($product->attributeFloat('missing'))->toBeNull()
+        ->and($product->attributeArray('missing'))->toBeNull()
+        ->and($product->attributeDate('missing'))->toBeNull()
+        ->and($product->getAttachedAttributeValueAsString('missing'))->toBeNull();
+});
+
+it('wraps a scalar value as an array reader', function (): void {
+    $product = createProduct();
+    $product->attachAttribute('color', 'white');
+
+    expect($product->attributeArray('color'))->toBe(['white']);
+});
+
+it('returns the stored string form of a typed value', function (): void {
+    $product = createProduct();
+    $product->attachAttribute('rating', 5);
+
+    expect($product->getAttachedAttributeValueAsString('rating'))->toBe('5');
+});
+
+it('returns typed values in the attached attributes map', function (): void {
+    $product = createProduct();
+    $product->attachAttribute('color', 'white');
+    $product->attachAttribute('rating', 5);
+
+    expect($product->getAttachedAttributes()->toArray())->toBe([
+        'color' => 'white',
+        'rating' => 5,
+    ]);
+});
+
 if (! function_exists('createProduct')) {
     function createProduct(): Product
     {
