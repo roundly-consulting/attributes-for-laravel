@@ -8,6 +8,10 @@ Values keep their real PHP type (string, integer, float, boolean, array, datetim
 registry validates known attributes, a fluent builder sets several at once, query scopes let you
 filter owners by their attributes, and events let your app react to changes.
 
+Beyond the typed core it also supports **encrypted values**, **unique** and **required**
+constraints, **default values**, an optional **audit/history trail**, **per-model schemas**, a
+typed `attr()` accessor, bulk read helpers, and friendly validation errors.
+
 ## Requirements
 
 - PHP 8.4+
@@ -47,8 +51,15 @@ return [
     'table' => 'attributes',
     'strict' => env('ATTRIBUTES_STRICT', false),
     'prune_after_days' => env('ATTRIBUTES_PRUNE_AFTER_DAYS', 30),
+    'history' => [
+        'enabled' => env('ATTRIBUTES_HISTORY', false),
+        'table' => 'attribute_revisions',
+    ],
     'definitions' => [
-        // 'rating' => ['type' => 'integer', 'rules' => ['min:1', 'max:5']],
+        // 'rating'  => ['type' => 'integer', 'rules' => ['min:1', 'max:5'], 'required' => true],
+        // 'sku'     => ['type' => 'string', 'unique' => 'global'],
+        // 'token'   => ['type' => 'string', 'encrypted' => true],
+        // 'retries' => ['type' => 'integer', 'default' => 3],
     ],
 ];
 ```
@@ -59,7 +70,20 @@ return [
 | `table` | `string` | `attributes` | — | Table name used by the migration and model. |
 | `strict` | `bool` | `false` | `ATTRIBUTES_STRICT` | When `true`, attaching an unregistered attribute throws `UnknownAttributeException`. |
 | `prune_after_days` | `int` | `30` | `ATTRIBUTES_PRUNE_AFTER_DAYS` | Default age (days) for `attributes:prune`. |
-| `definitions` | `array` | `[]` | — | Registry seed: known attributes with `type`, `rules`, `required`, `default`. |
+| `history.enabled` | `bool` | `false` | `ATTRIBUTES_HISTORY` | When `true`, records an old→new revision on every attach/sync/detach. |
+| `history.table` | `string` | `attribute_revisions` | — | Table name for the audit trail. |
+| `definitions` | `array` | `[]` | — | Registry seed. Each entry supports `type`, `rules`, `required`, `default`, `unique`, `encrypted`. |
+
+Each definition entry accepts:
+
+| Definition key | Type | Purpose |
+|----------------|------|---------|
+| `type` | `string` | One of `AttributeType`: `string`, `integer`, `float`, `boolean`, `array`, `datetime`. |
+| `rules` | `array` | Extra Laravel validation rules applied on attach. |
+| `required` | `bool` | Enforced by `$model->validateAttributes()`. |
+| `default` | `mixed` | Returned by typed reads when the attribute is unset. |
+| `unique` | `string`/`bool` | `'owner'` (per owner type), `'global'` (across every owner), `true` (= owner) or `false`/`'none'`. |
+| `encrypted` | `bool` | Stores the value as ciphertext via `Crypt` at rest. |
 
 ## Usage
 
@@ -132,6 +156,39 @@ $product->attributeDate('published_at'); // ?Carbon
 All read methods are eager-loading aware: `$product->load('attachedAttributes')` first and the
 reads run against the loaded relation.
 
+### The `attr()` accessor
+
+`attr()` returns a typed value object — one entry point instead of the six `attributeX()`
+methods (which still work). Defaults defined in a definition are applied automatically.
+
+```php
+$product->attr('rating')->int();        // ?int (falls back to the defined default)
+$product->attr('price')->float();       // ?float
+$product->attr('on_sale')->bool();      // ?bool
+$product->attr('tags')->array();        // ?array
+$product->attr('published_at')->date(); // ?Carbon
+$product->attr('color')->string();      // ?string
+$product->attr('color')->raw();         // underlying typed value
+$product->attr('color')->isNull();      // bool
+(string) $product->attr('color');       // '' when unset, else the value
+```
+
+### Bulk reads & exports
+
+```php
+use RoundlyConsulting\Attributes\Facades\Attributes;
+use RoundlyConsulting\Attributes\Models\Attribute;
+
+Attributes::for($product)->all();        // Collection<name, value>
+Attributes::for($product)->toKeyValue(); // array<name, value>
+Attributes::for($product)->keys();       // list<string>
+Attributes::for($product)->get('color'); // single value
+Attributes::for($product)->has('color'); // bool
+
+$product->attachedAttributes()->get()->toKeyValue(); // array<name, value>
+Attribute::collect()->keyByName();                   // collection keyed by name
+```
+
 ### Query scopes
 
 Filter and order owner models by their attributes:
@@ -142,10 +199,18 @@ Product::query()->whereAttribute('rating', 5)->get();       // typed equality
 Product::query()->whereAttributeIn('rating', [3, 5])->get();
 Product::query()->whereHasAttribute('on_sale')->get();
 Product::query()->whereDoesntHaveAttribute('on_sale')->get();
+Product::query()->whereAttributeBetween('published_at', $from, $to)->get();
+Product::query()->whereAttributeNull('note')->get();      // present, value NULL
+Product::query()->whereAttributeNotNull('note')->get();
 Product::query()->orderByAttribute('rating', 'desc')->get();
 ```
 
 The `Attribute` model also exposes `forName`, `forOwner`, and `ofType` scopes.
+
+> **Note:** values are stored in a text column, so `whereAttributeBetween` compares them
+> lexicographically — reliable for ISO-8601 datetimes and strings, but integer ranges are
+> zero-pad-sensitive. Encrypted values (below) cannot be matched by the `whereAttribute*` value
+> scopes because their ciphertext is non-deterministic.
 
 ### Updating metadata and removing attributes
 
@@ -192,6 +257,95 @@ $product->attachAttribute('rating', 9); // throws InvalidAttributeValueException
 ```
 
 You can also seed definitions through the `definitions` config key.
+
+### Per-model schemas
+
+A model can declare its own definitions, merged over the global config for that model only.
+Declare either a public `attributeDefinitions()` method or a `$attributeDefinitions` property:
+
+```php
+class Product extends Model implements HasAttributesContract
+{
+    use HasAttributes;
+
+    /** @var array<string, array<string, mixed>> */
+    protected array $attributeDefinitions = [
+        'rating'  => ['type' => 'integer', 'rules' => ['min:1', 'max:5'], 'required' => true],
+        'sku'     => ['type' => 'string', 'unique' => 'global'],
+        'token'   => ['type' => 'string', 'encrypted' => true],
+        'retries' => ['type' => 'integer', 'default' => 3],
+    ];
+}
+```
+
+### Constraints — unique & required
+
+```php
+Attributes::define(new AttributeDefinitionData('sku', AttributeType::String_, unique: UniqueScope::Global_));
+
+$a->attachAttribute('sku', 'ABC');
+$b->attachAttribute('sku', 'ABC'); // throws DuplicateAttributeValueException
+
+$product->validateAttributes(); // throws MissingRequiredAttributeException if a required key is absent
+```
+
+`unique` accepts `UniqueScope::Owner` (unique per owner type), `UniqueScope::Global_` (unique
+across every owner), or `UniqueScope::None`. Re-saving the same owner's own value is idempotent.
+
+### Default values
+
+A definition's `default` is returned by typed reads when the attribute is unset (defaults apply
+on **read only** — they are never persisted, and bulk `getAttachedAttributes()` lists stored rows
+only):
+
+```php
+Attributes::define(new AttributeDefinitionData('retries', AttributeType::Integer, default: 3));
+
+$product->attributeInt('retries'); // 3 when unset, the stored value when set
+$product->attr('retries')->int();  // 3
+```
+
+### Encrypted values
+
+Mark a definition `encrypted: true` and its value is transparently `Crypt`-encrypted at rest and
+decrypted on read. Works for every type; `null` values are never run through `Crypt`.
+
+```php
+Attributes::define(new AttributeDefinitionData('token', AttributeType::String_, encrypted: true));
+
+$product->attachAttribute('token', 'secret');
+$product->getAttachedAttributeValue('token'); // 'secret' (DB column holds ciphertext)
+```
+
+Because the ciphertext is non-deterministic, encrypted values cannot be matched by the
+`whereAttribute*` value scopes.
+
+### History / audit trail
+
+Enable `attributes.history.enabled` (or `ATTRIBUTES_HISTORY=true`) to record an old→new revision
+on every attach/sync/detach. Disabled by default, so there is no table cost unless you opt in.
+
+```php
+$product->history();          // Collection<AttributeRevision> — newest first
+$product->history('color');   // filtered by attribute name
+$product->attributeHistory(); // the underlying MorphMany relation
+```
+
+Each revision stores the change `type` (`attached`/`updated`/`detached`), the old and new value,
+their types, and meta. Encrypted attributes are stored in their ciphertext form, so the audit log
+never leaks secrets. Pruning the revisions table is left to the host application.
+
+### Friendly validation errors
+
+`InvalidAttributeValueException` carries the failing attribute name and the full validator bag:
+
+```php
+catch (InvalidAttributeValueException $e) {
+    $e->attributeName; // 'rating'
+    $e->messages();    // ['rating: The rating must be between 1 and 5.']
+    $e->errorBag();    // Illuminate\Support\MessageBag|null
+}
+```
 
 ### Events
 
