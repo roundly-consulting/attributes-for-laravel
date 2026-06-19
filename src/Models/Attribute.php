@@ -4,20 +4,25 @@ declare(strict_types=1);
 
 namespace RoundlyConsulting\Attributes\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use RoundlyConsulting\Attributes\Casts\AttributeValue;
 use RoundlyConsulting\Attributes\Database\Factories\AttributeFactory;
+use RoundlyConsulting\Attributes\Enums\AttributeType;
 
 /**
  * @property int $id
  * @property string $owner_type
  * @property int $owner_id
  * @property string $name
- * @property string|null $value
+ * @property mixed $value
+ * @property string|null $value_type
+ * @property-read AttributeType $type
  * @property Collection<string, mixed>|null $meta
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
@@ -32,12 +37,59 @@ final class Attribute extends Model
 
     protected $guarded = [];
 
+    public function getTable(): string
+    {
+        if (isset($this->table)) {
+            return $this->table;
+        }
+
+        $table = config('attributes.table', 'attributes');
+
+        return is_string($table) ? $table : 'attributes';
+    }
+
     /**
      * @return MorphTo<Model, $this>
      */
     public function owner(): MorphTo
     {
         return $this->morphTo();
+    }
+
+    /**
+     * The resolved value type of this attribute.
+     */
+    public function type(): AttributeType
+    {
+        $type = $this->value_type;
+
+        return $type === null ? AttributeType::String_ : AttributeType::tryFrom($type) ?? AttributeType::String_;
+    }
+
+    /**
+     * @param  Builder<Attribute>  $query
+     */
+    public function scopeForName(Builder $query, string $name): void
+    {
+        $query->where('name', $name);
+    }
+
+    /**
+     * @param  Builder<Attribute>  $query
+     */
+    public function scopeForOwner(Builder $query, Model $owner): void
+    {
+        $query
+            ->where('owner_type', $owner->getMorphClass())
+            ->where('owner_id', $owner->getKey());
+    }
+
+    /**
+     * @param  Builder<Attribute>  $query
+     */
+    public function scopeOfType(Builder $query, AttributeType $type): void
+    {
+        $query->where('value_type', $type->value);
     }
 
     protected static function newFactory(): AttributeFactory
@@ -52,6 +104,7 @@ final class Attribute extends Model
     {
         return [
             'meta' => 'collection',
+            'value' => AttributeValue::class,
         ];
     }
 }
