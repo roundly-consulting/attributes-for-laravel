@@ -1,3 +1,11 @@
+<!-- roundly-hero:start -->
+<p align="center">
+  <a href="https://roundly-consulting.com/open-source/docs/attributes-for-laravel?utm_source=github&utm_medium=readme&utm_campaign=open-source&utm_content=attributes-for-laravel">
+    <img src="art/hero.png" alt="Attributes for Laravel — Roundly open source" width="100%">
+  </a>
+</p>
+<!-- roundly-hero:end -->
+
 # Attributes for Laravel
 
 Attach multiple dynamic, **typed** key/value attributes to any Eloquent model. Add a single
