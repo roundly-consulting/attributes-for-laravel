@@ -416,7 +416,17 @@ trait HasAttributes
             ->whereNull($table.'.deleted_at')
             ->limit(1);
 
-        $query->orderBy($subQuery, $direction);
+        $query->orderBy($subQuery, $this->orderDirection($direction));
+    }
+
+    /**
+     * Normalise a sort direction to a value Laravel's query builder accepts.
+     *
+     * @return 'asc'|'desc'
+     */
+    private function orderDirection(string $direction): string
+    {
+        return strtolower($direction) === 'desc' ? 'desc' : 'asc';
     }
 
     /**
