@@ -373,6 +373,45 @@ php artisan attributes:list "App\Models\Product" 42
 php artisan attributes:prune --days=30 --force
 ```
 
+## Integrates with
+
+This package builds on other roundly-consulting packages:
+
+- **[enums-for-laravel](https://github.com/roundly-consulting/enums-for-laravel)** — a hard
+  dependency. Every enum this package ships (`AttributeType`, `UniqueScope`, `RevisionType`)
+  uses the `RoundlyConsulting\Enums\Helpers` trait, so each gains the full ergonomic surface on
+  top of its existing domain methods: `values()`, `names()`, `labels()`, `options()`,
+  `toOptions()`, `toArray()`, `collect()`, `count()`, `random()`, `readable()`/`label()`, the
+  case lookups (`fromName()`, `tryFromName()`, `fromLabel()`, `tryFromLabel()`, `hasName()`,
+  `hasValue()`), and the fluent comparators (`is()`, `isNot()`, `isIn()`, `isNotIn()`,
+  `whenIs*()`).
+
+```php
+use RoundlyConsulting\Attributes\Enums\AttributeType;
+
+// Value => label map for a select input.
+AttributeType::toOptions(); // ['string' => 'String', 'integer' => 'Integer', ...]
+
+// Case lookups.
+AttributeType::fromName('Integer');   // AttributeType::Integer
+AttributeType::hasValue('datetime');  // true
+```
+
+### `AttributeType::validationRule()` caveat
+
+`AttributeType` keeps its own **instance** `validationRule()`, which returns the Laravel rule
+for a value of that type (`'string'`, `'integer'`, `'numeric'`, `'boolean'`, `'array'`,
+`'date'`). This intentionally shadows the trait's **static** `validationRule()` membership rule,
+so `AttributeType` does not expose the `in:...` form under that name. If a host needs the
+membership rule, build it from the values:
+
+```php
+'in:'.AttributeType::values()->implode(','); // in:string,integer,float,boolean,array,datetime
+```
+
+`UniqueScope` and `RevisionType` have no such method, so they expose the trait's static
+`validationRule()` normally (`UniqueScope::validationRule()` → `in:none,owner,global`).
+
 ## Testing
 
 ```bash
