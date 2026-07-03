@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Illuminate\Support\Carbon;
 use RoundlyConsulting\Attributes\Enums\AttributeType;
 use RoundlyConsulting\Attributes\Exceptions\InvalidAttributeValueException;
+use RoundlyConsulting\Enums\Exceptions\EnumException;
 
 it('infers type from native php values', function (mixed $value, AttributeType $expected): void {
     expect(AttributeType::forValue($value))->toBe($expected);
@@ -118,3 +119,74 @@ it('encodes a date string to iso-8601', function (): void {
     expect($stored)->toContain('2026-06-19')
         ->and(AttributeType::DateTime->fromStorage($stored)->toDateString())->toBe('2026-06-19');
 });
+
+it('exposes the backed values in declaration order', function (): void {
+    expect(AttributeType::values()->all())
+        ->toBe(['string', 'integer', 'float', 'boolean', 'array', 'datetime']);
+});
+
+it('exposes the case names in declaration order', function (): void {
+    expect(AttributeType::names()->all())
+        ->toBe(['String_', 'Integer', 'Float_', 'Boolean', 'Array_', 'DateTime']);
+});
+
+it('builds readable labels for every case', function (): void {
+    expect(AttributeType::labels()->all())
+        ->toBe(['String', 'Integer', 'Float', 'Boolean', 'Array', 'Datetime']);
+});
+
+it('maps values to labels for select inputs', function (): void {
+    expect(AttributeType::toOptions()->all())->toBe([
+        'string' => 'String',
+        'integer' => 'Integer',
+        'float' => 'Float',
+        'boolean' => 'Boolean',
+        'array' => 'Array',
+        'datetime' => 'Datetime',
+    ])->and(AttributeType::toArray())->toBe(AttributeType::toOptions()->all());
+});
+
+it('builds option dtos for js selects', function (): void {
+    $options = AttributeType::options();
+
+    expect($options)->toHaveCount(6)
+        ->and($options->first()->value)->toBe('string')
+        ->and($options->first()->label)->toBe('String')
+        ->and($options->first()->name)->toBe('String_');
+});
+
+it('resolves cases by name and label', function (): void {
+    expect(AttributeType::fromName('Integer'))->toBe(AttributeType::Integer)
+        ->and(AttributeType::tryFromLabel('Float'))->toBe(AttributeType::Float_)
+        ->and(AttributeType::tryFromName('nope'))->toBeNull();
+});
+
+it('reports whether a backed value exists', function (): void {
+    expect(AttributeType::hasValue('datetime'))->toBeTrue()
+        ->and(AttributeType::hasValue('nope'))->toBeFalse();
+});
+
+it('keeps the domain validation rule shadowing the trait static rule', function (AttributeType $type, string $rule): void {
+    expect($type->validationRule())->toBe($rule);
+})->with([
+    [AttributeType::String_, 'string'],
+    [AttributeType::Integer, 'integer'],
+    [AttributeType::Float_, 'numeric'],
+    [AttributeType::Boolean, 'boolean'],
+    [AttributeType::Array_, 'array'],
+    [AttributeType::DateTime, 'date'],
+]);
+
+it('compares cases with the fluent comparators', function (): void {
+    expect(AttributeType::Boolean->is(AttributeType::Boolean))->toBeTrue()
+        ->and(AttributeType::Boolean->isIn([AttributeType::String_, AttributeType::Boolean]))->toBeTrue()
+        ->and(AttributeType::Boolean->isNotIn([AttributeType::String_, AttributeType::Integer]))->toBeTrue();
+});
+
+it('throws resolving an unknown name or label', function (): void {
+    AttributeType::fromName('missing');
+})->throws(EnumException::class);
+
+it('throws resolving an unknown label', function (): void {
+    AttributeType::fromLabel('Missing');
+})->throws(EnumException::class);

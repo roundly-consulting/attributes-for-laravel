@@ -30,3 +30,16 @@ it('reports whether it enforces uniqueness', function (): void {
         ->and(UniqueScope::Owner->enforces())->toBeTrue()
         ->and(UniqueScope::Global_->enforces())->toBeTrue();
 });
+
+it('exposes the backed values and labels', function (): void {
+    expect(UniqueScope::values()->all())->toBe(['none', 'owner', 'global'])
+        ->and(UniqueScope::toOptions()->all())->toBe([
+            'none' => 'None',
+            'owner' => 'Owner',
+            'global' => 'Global',
+        ]);
+});
+
+it('exposes the trait membership validation rule', function (): void {
+    expect(UniqueScope::validationRule())->toBe('in:none,owner,global');
+});
