@@ -7,9 +7,12 @@ namespace RoundlyConsulting\Attributes\Enums;
 use DateTimeInterface;
 use Illuminate\Support\Carbon;
 use RoundlyConsulting\Attributes\Exceptions\InvalidAttributeValueException;
+use RoundlyConsulting\Enums\Helpers;
 
 enum AttributeType: string
 {
+    use Helpers;
+
     case String_ = 'string';
     case Integer = 'integer';
     case Float_ = 'float';
@@ -68,6 +71,11 @@ enum AttributeType: string
 
     /**
      * The Laravel validation rule that enforces this type on a value.
+     *
+     * Intentionally shadows the {@see Helpers::validationRule()} static
+     * membership rule (`in:...`): here it returns the per-type value rule for a
+     * given case. Hosts needing the membership rule use
+     * `'in:'.AttributeType::values()->implode(',')`.
      */
     public function validationRule(): string
     {

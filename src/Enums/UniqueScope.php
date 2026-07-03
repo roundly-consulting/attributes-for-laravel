@@ -4,8 +4,12 @@ declare(strict_types=1);
 
 namespace RoundlyConsulting\Attributes\Enums;
 
+use RoundlyConsulting\Enums\Helpers;
+
 enum UniqueScope: string
 {
+    use Helpers;
+
     case None = 'none';
     case Owner = 'owner';
     case Global_ = 'global';
