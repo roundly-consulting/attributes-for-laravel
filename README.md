@@ -385,6 +385,13 @@ This package builds on other roundly-consulting packages:
   case lookups (`fromName()`, `tryFromName()`, `fromLabel()`, `tryFromLabel()`, `hasName()`,
   `hasValue()`), and the fluent comparators (`is()`, `isNot()`, `isIn()`, `isNotIn()`,
   `whenIs*()`).
+- **[package-toolkit-for-laravel](https://github.com/roundly-consulting/package-toolkit-for-laravel)**
+  — a hard dependency. It provides the service-provider builder (config, migrations, commands and
+  publish tags) and the validated `attributes.model` resolver, which checks that a swapped-in model
+  really is an attribute model before the package queries through it. The package also reports its
+  configuration to Laravel's `about` command (`php artisan about --only=attributes`); attribute
+  definitions are reported by count only — an attribute name is a host's field name and often names
+  the very secret the `encrypted` flag protects.
 
 ```php
 use RoundlyConsulting\Attributes\Enums\AttributeType;
