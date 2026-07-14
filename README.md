@@ -33,21 +33,21 @@ Install the package via Composer:
 composer require roundly-consulting/attributes-for-laravel
 ```
 
-Publish and run the migration:
+Publish the migrations, then run them:
 
 ```bash
 php artisan vendor:publish --tag="attributes-migrations"
 php artisan migrate
 ```
 
+The migrations are **publish-only** — the package never loads them for you. Publishing copies them
+into your app's `database/migrations`, where you own them and can edit the schema before migrating.
+
 Optionally publish the config file:
 
 ```bash
 php artisan vendor:publish --tag="attributes-config"
 ```
-
-The migration is auto-discovered, so the package works without publishing it. Publish only when
-you want to customise the schema.
 
 ## Configuration
 
