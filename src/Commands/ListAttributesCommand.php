@@ -6,6 +6,7 @@ namespace RoundlyConsulting\Attributes\Commands;
 
 use Illuminate\Console\Command;
 use RoundlyConsulting\Attributes\Models\Attribute;
+use RoundlyConsulting\Attributes\Support\AttributeModel;
 
 final class ListAttributesCommand extends Command
 {
@@ -15,8 +16,7 @@ final class ListAttributesCommand extends Command
 
     public function handle(): int
     {
-        /** @var class-string<Attribute> $model */
-        $model = config('attributes.model', Attribute::class);
+        $model = AttributeModel::class();
 
         $ownerType = $this->stringArgument('owner-type');
         $ownerId = $this->stringArgument('owner-id');

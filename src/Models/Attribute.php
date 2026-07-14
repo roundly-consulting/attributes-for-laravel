@@ -29,8 +29,11 @@ use RoundlyConsulting\Attributes\Support\AttributeCollection;
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property Carbon|null $deleted_at
+ *
+ * Not final on purpose: `attributes.model` documents swapping in a host model
+ * that extends this one.
  */
-final class Attribute extends Model
+class Attribute extends Model
 {
     /** @use HasFactory<AttributeFactory> */
     use HasFactory;
@@ -97,7 +100,8 @@ final class Attribute extends Model
     /**
      * Every attribute query and relation returns the richer collection.
      *
-     * @param  array<int, Attribute>  $models
+     * @param  array<int, static>  $models
+     * @return AttributeCollection<static>
      */
     public function newCollection(array $models = []): AttributeCollection
     {
@@ -106,11 +110,13 @@ final class Attribute extends Model
 
     /**
      * Load every attribute as the richer collection.
+     *
+     * @return AttributeCollection<static>
      */
     public static function collect(): AttributeCollection
     {
-        /** @var AttributeCollection $collection */
-        $collection = self::query()->get();
+        /** @var AttributeCollection<static> $collection */
+        $collection = static::query()->get();
 
         return $collection;
     }

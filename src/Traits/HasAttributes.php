@@ -21,6 +21,7 @@ use RoundlyConsulting\Attributes\Exceptions\MissingRequiredAttributeException;
 use RoundlyConsulting\Attributes\Models\Attribute;
 use RoundlyConsulting\Attributes\Models\AttributeRevision;
 use RoundlyConsulting\Attributes\Registry\AttributeRegistry;
+use RoundlyConsulting\Attributes\Support\AttributeModel;
 use RoundlyConsulting\Attributes\Support\AttributeValueCaster;
 use RoundlyConsulting\Attributes\Support\StoredAttributeValue;
 
@@ -38,11 +39,8 @@ trait HasAttributes
      */
     public function attachedAttributes(): MorphMany
     {
-        /** @var class-string<Attribute> $model */
-        $model = config('attributes.model', Attribute::class);
-
         /** @var MorphMany<Attribute, $this> $relation */
-        $relation = $this->morphMany($model, 'owner');
+        $relation = $this->morphMany(AttributeModel::class(), 'owner');
 
         return $relation;
     }
@@ -401,8 +399,7 @@ trait HasAttributes
      */
     public function scopeOrderByAttribute(Builder $query, string $name, string $direction = 'asc'): void
     {
-        /** @var class-string<Attribute> $model */
-        $model = config('attributes.model', Attribute::class);
+        $model = AttributeModel::class();
 
         $related = new $model;
         $table = $related->getTable();

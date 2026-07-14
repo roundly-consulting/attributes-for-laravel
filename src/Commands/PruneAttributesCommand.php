@@ -6,7 +6,7 @@ namespace RoundlyConsulting\Attributes\Commands;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
-use RoundlyConsulting\Attributes\Models\Attribute;
+use RoundlyConsulting\Attributes\Support\AttributeModel;
 
 final class PruneAttributesCommand extends Command
 {
@@ -20,8 +20,7 @@ final class PruneAttributesCommand extends Command
 
         $cutoff = Carbon::now()->subDays($days);
 
-        /** @var class-string<Attribute> $model */
-        $model = config('attributes.model', Attribute::class);
+        $model = AttributeModel::class();
 
         $query = $model::onlyTrashed()->where('deleted_at', '<', $cutoff);
 

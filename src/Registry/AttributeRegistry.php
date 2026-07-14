@@ -13,6 +13,7 @@ use RoundlyConsulting\Attributes\Exceptions\DuplicateAttributeValueException;
 use RoundlyConsulting\Attributes\Exceptions\InvalidAttributeValueException;
 use RoundlyConsulting\Attributes\Exceptions\UnknownAttributeException;
 use RoundlyConsulting\Attributes\Models\Attribute;
+use RoundlyConsulting\Attributes\Support\AttributeModel;
 use RoundlyConsulting\Attributes\Support\AttributeQuery;
 use RoundlyConsulting\Attributes\Support\AttributeValueCaster;
 
@@ -274,8 +275,7 @@ final class AttributeRegistry
 
     private function attributeModel(): Attribute
     {
-        /** @var class-string<Attribute> $model */
-        $model = config('attributes.model', Attribute::class);
+        $model = AttributeModel::class();
 
         return new $model;
     }

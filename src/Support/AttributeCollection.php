@@ -9,7 +9,9 @@ use Illuminate\Support\Collection as BaseCollection;
 use RoundlyConsulting\Attributes\Models\Attribute;
 
 /**
- * @extends Collection<int, Attribute>
+ * @template TAttribute of Attribute
+ *
+ * @extends Collection<int, TAttribute>
  */
 final class AttributeCollection extends Collection
 {
