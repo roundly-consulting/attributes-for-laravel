@@ -69,7 +69,9 @@ it('matches the typed reader methods for set and default values', function (): v
     ]);
 
     app()->forgetInstance(AttributeRegistry::class);
-    (new AttributesServiceProvider(app()))->boot();
+    $provider = new AttributesServiceProvider(app());
+    $provider->register();
+    $provider->boot();
 
     $product = Product::query()->create();
     $product->attachAttribute('age', 21);

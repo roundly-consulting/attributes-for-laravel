@@ -104,7 +104,9 @@ it('loads definitions from config via the provider', function (): void {
 
     // Re-boot the provider against the new config.
     app()->forgetInstance(AttributeRegistry::class);
-    (new AttributesServiceProvider(app()))->boot();
+    $provider = new AttributesServiceProvider(app());
+    $provider->register();
+    $provider->boot();
 
     $registry = app(AttributeRegistry::class);
 
@@ -120,7 +122,9 @@ it('skips malformed config entries and defaults bad types to string', function (
     ]);
 
     app()->forgetInstance(AttributeRegistry::class);
-    (new AttributesServiceProvider(app()))->boot();
+    $provider = new AttributesServiceProvider(app());
+    $provider->register();
+    $provider->boot();
 
     $registry = app(AttributeRegistry::class);
 

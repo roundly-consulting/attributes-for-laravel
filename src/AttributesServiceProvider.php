@@ -4,41 +4,51 @@ declare(strict_types=1);
 
 namespace RoundlyConsulting\Attributes;
 
-use Illuminate\Support\ServiceProvider;
 use RoundlyConsulting\Attributes\Commands\ListAttributesCommand;
 use RoundlyConsulting\Attributes\Commands\PruneAttributesCommand;
 use RoundlyConsulting\Attributes\Registry\AttributeRegistry;
 use RoundlyConsulting\Attributes\Registry\DefinitionFactory;
+use RoundlyConsulting\Attributes\Support\AttributeModel;
+use RoundlyConsulting\PackageToolkit\Package;
+use RoundlyConsulting\PackageToolkit\PackageServiceProvider;
 
-final class AttributesServiceProvider extends ServiceProvider
+final class AttributesServiceProvider extends PackageServiceProvider
 {
+    public function configurePackage(Package $package): void
+    {
+        $package
+            ->name('attributes')
+            ->hasConfigFile()
+            ->hasMigrations()
+            ->hasCommands([
+                ListAttributesCommand::class,
+                PruneAttributesCommand::class,
+            ])
+            ->contributesToAbout(static fn (): array => [
+                'Model' => class_basename(AttributeModel::class()),
+                'Table' => self::table(),
+                'Strict mode' => config('attributes.strict', false) === true ? 'ON' : 'OFF',
+                'History' => config('attributes.history.enabled', false) === true ? 'ON' : 'OFF',
+                'Prune after' => self::pruneAfterDays().' day(s)',
+                // Definitions are reported by count only: an attribute name is a
+                // host's field name (api_token, ssn, …) and often names the very
+                // secret the encrypted flag protects.
+                'Definitions' => self::definitions(),
+            ]);
+    }
+
     public function register(): void
     {
-        $this->mergeConfigFrom(__DIR__.'/../config/attributes.php', 'attributes');
+        parent::register();
 
         $this->app->singleton(AttributeRegistry::class);
     }
 
     public function boot(): void
     {
-        $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
+        parent::boot();
 
         $this->hydrateRegistry();
-
-        if ($this->app->runningInConsole()) {
-            $this->commands([
-                ListAttributesCommand::class,
-                PruneAttributesCommand::class,
-            ]);
-
-            $this->publishes([
-                __DIR__.'/../config/attributes.php' => config_path('attributes.php'),
-            ], 'attributes-config');
-
-            $this->publishes([
-                __DIR__.'/../database/migrations' => database_path('migrations'),
-            ], 'attributes-migrations');
-        }
     }
 
     private function hydrateRegistry(): void
@@ -58,5 +68,38 @@ final class AttributesServiceProvider extends ServiceProvider
 
             $registry->define(DefinitionFactory::fromArray((string) $name, $definition));
         }
+    }
+
+    private static function table(): string
+    {
+        $table = config('attributes.table', 'attributes');
+
+        return is_string($table) && $table !== '' ? $table : 'attributes';
+    }
+
+    private static function pruneAfterDays(): string
+    {
+        $days = config('attributes.prune_after_days', 30);
+
+        return (string) (is_numeric($days) ? (int) $days : 30);
+    }
+
+    private static function definitions(): string
+    {
+        $definitions = config('attributes.definitions', []);
+
+        if (! is_array($definitions) || $definitions === []) {
+            return 'FREE-FORM';
+        }
+
+        $encrypted = 0;
+
+        foreach ($definitions as $definition) {
+            if (is_array($definition) && ($definition['encrypted'] ?? false) === true) {
+                $encrypted++;
+            }
+        }
+
+        return count($definitions).' defined ('.$encrypted.' encrypted)';
     }
 }
