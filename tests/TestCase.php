@@ -16,7 +16,9 @@ abstract class TestCase extends Orchestra
     {
         parent::setUp();
 
-        $this->artisan('migrate')->run();
+        // Migrations are publish-only: the provider never loads them, so the
+        // suite runs the package's own migration sources explicitly.
+        $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
 
         Schema::create('products', function (Blueprint $table): void {
             $table->id();
