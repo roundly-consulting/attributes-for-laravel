@@ -5,14 +5,19 @@ declare(strict_types=1);
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
+use RoundlyConsulting\PackageToolkit\Enums\KeyType;
 
 return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create($this->table(), function (Blueprint $table): void {
+        // Silently falls back to bigint for an unrecognized value, so a typo in
+        // the host's config never leaves the package unable to migrate.
+        $keyType = KeyType::fromConfig('attributes.key_type');
+
+        Schema::create($this->table(), function (Blueprint $table) use ($keyType): void {
             $table->id();
-            $table->nullableMorphs('owner');
+            $table->morphKey('owner', $keyType, nullable: true);
             $table->string('name');
             $table->string('type');
             $table->text('old_value')->nullable();

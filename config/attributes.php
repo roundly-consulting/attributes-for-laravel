@@ -33,6 +33,22 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Key Type
+    |--------------------------------------------------------------------------
+    |
+    | The key type used for the polymorphic owner column. Use "uuid" or "ulid"
+    | when the models attributes attach to use UUID/ULID primary keys, otherwise
+    | leave it as "bigint". Anything unrecognized falls back to "bigint". Your
+    | owner models must share one key type — set this to match.
+    |
+    | Supported: "bigint", "uuid", "ulid"
+    |
+    */
+
+    'key_type' => env('ATTRIBUTES_KEY_TYPE', 'bigint'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Strict Mode
     |--------------------------------------------------------------------------
     |
