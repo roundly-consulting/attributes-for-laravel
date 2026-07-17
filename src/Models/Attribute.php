@@ -15,6 +15,7 @@ use RoundlyConsulting\Attributes\Casts\AttributeValue;
 use RoundlyConsulting\Attributes\Database\Factories\AttributeFactory;
 use RoundlyConsulting\Attributes\Enums\AttributeType;
 use RoundlyConsulting\Attributes\Support\AttributeCollection;
+use RoundlyConsulting\Attributes\Support\AttributeModel;
 
 /**
  * @property int $id
@@ -111,12 +112,18 @@ class Attribute extends Model
     /**
      * Load every attribute as the richer collection.
      *
-     * @return AttributeCollection<static>
+     * Resolves through the `attributes.model` seam rather than `static::`. Late static
+     * binding would resolve to the *called* class, so a host that swapped the model and
+     * called the documented `Attribute::collect()` got rows hydrated as the packaged class
+     * — none of their casts, scopes or model events. Every other call site in the package
+     * already went through AttributeModel; this one did not.
+     *
+     * @return AttributeCollection<Attribute>
      */
     public static function collect(): AttributeCollection
     {
-        /** @var AttributeCollection<static> $collection */
-        $collection = static::query()->get();
+        /** @var AttributeCollection<Attribute> $collection */
+        $collection = AttributeModel::class()::query()->get();
 
         return $collection;
     }
