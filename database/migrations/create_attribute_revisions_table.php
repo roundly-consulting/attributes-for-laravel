@@ -19,8 +19,8 @@ return new class extends Migration
             $table->text('new_value')->nullable();
             $table->string('old_value_type')->nullable();
             $table->string('new_value_type')->nullable();
-            $table->json('old_meta')->nullable();
-            $table->json('new_meta')->nullable();
+            $table->jsonb('old_meta')->nullable();
+            $table->jsonb('new_meta')->nullable();
             $table->timestamps();
             $table->softDeletes();
 
