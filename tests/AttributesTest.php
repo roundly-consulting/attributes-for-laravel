@@ -22,19 +22,14 @@ it('attaches single attribute to model', function () {
 });
 
 /**
- * The row identity is still pinned in the database; the meta payload is read back through
- * the model rather than compared inside SQL.
+ * The meta payload is pinned twice, and each catches something the other cannot: the
+ * database comparison proves the stored column, the model read proves the value survives
+ * the `collection` cast round-trip.
  *
- * `assertDatabaseHas(['meta' => $this->castAsJson(...)])` cannot work on Postgres, and not
- * for a fixable reason: Postgres ships **no equality operator for `json`** (only `jsonb`
- * has one), so any `meta = ?` comparison dies with
- * `operator does not exist: json = unknown` however the value is cast. sqlite compares the
- * column as text and never noticed. Nothing in the package queries `meta` — it is only ever
- * written (AttachAttributeAction, SyncAttributeMetaAction) — so this was purely a
- * driver-dependent test technique, not a defect in what is shipped.
- *
- * Reading it back through the model is also the stronger assertion: it proves the value
- * survives the `collection` cast round-trip, which a raw column comparison never touched.
+ * `meta` is `jsonb`, so `meta = ?` runs on every engine. It could not while the column was
+ * `json`: Postgres ships **no equality operator for `json`** (only `jsonb` has one), so the
+ * comparison died with `operator does not exist: json = unknown` however the value was
+ * cast, and sqlite compared the column as text and never noticed.
  */
 it('syncs attribute meta data', function () {
     $product = createProduct();
@@ -49,6 +44,7 @@ it('syncs attribute meta data', function () {
         'owner_id' => $product->getKey(),
         'name' => 'color',
         'value' => 'white',
+        'meta' => $this->castAsJson(['is_pretty' => 'yes']),
     ]);
 
     expect($product->getAttachedAttributeMeta('color')->all())->toBe(['is_pretty' => 'yes']);
@@ -66,10 +62,11 @@ it('attaches single attribute with meta data to model', function () {
         'owner_id' => $product->getKey(),
         'name' => 'color',
         'value' => 'white',
+        'meta' => $this->castAsJson(['is_unique' => 'yes']),
     ]);
 
-    // Read back through the model: Postgres has no `json` equality operator, so the meta
-    // cannot be compared inside the SQL. See the note on the sync test above.
+    // Also read back through the model: that is what proves the `collection` cast
+    // round-trips, which the column comparison above never touches.
     expect($product->getAttachedAttributeMeta('color')->all())->toBe(['is_unique' => 'yes']);
 });
 
