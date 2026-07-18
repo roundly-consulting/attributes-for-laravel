@@ -22,8 +22,7 @@ ArchPresets::strictTypes('RoundlyConsulting\Attributes');
  * namespace, so Builders, Registry, Casts and the rest are now closed too — which is how
  * the un-final AttributesException surfaced at all.
  */
-ArchPresets::finalByDefault('RoundlyConsulting\Attributes')
-    ->ignoring([Attribute::class, AttributesException::class]);
+ArchPresets::finalByDefault('RoundlyConsulting\Attributes', [Attribute::class, AttributesException::class]);
 
 /**
  * The counter-weight, and the fleet's 7×-shipped fatal: `final` on a config-swappable
