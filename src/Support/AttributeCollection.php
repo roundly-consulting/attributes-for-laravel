@@ -34,16 +34,16 @@ final class AttributeCollection extends Collection
     /**
      * Re-key the collection by attribute name.
      *
-     * @return BaseCollection<string, Attribute>
+     * @return BaseCollection<string, TAttribute>
      */
     public function keyByName(): BaseCollection
     {
-        $keyed = new BaseCollection;
+        $keyed = [];
 
         foreach ($this as $attribute) {
-            $keyed->put($attribute->name, $attribute);
+            $keyed[$attribute->name] = $attribute;
         }
 
-        return $keyed;
+        return new BaseCollection($keyed);
     }
 }
