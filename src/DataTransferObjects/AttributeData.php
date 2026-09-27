@@ -26,7 +26,7 @@ final readonly class AttributeData
     }
 
     /**
-     * Convert a legacy name => value map into a list of attribute DTOs.
+     * Convert a plain name => value map into a list of attribute DTOs.
      *
      * @param  array<string, mixed>  $items
      * @return list<self>
