@@ -9,7 +9,7 @@ use Illuminate\Support\Collection;
 use RoundlyConsulting\Attributes\Contracts\HasAttributes;
 use RoundlyConsulting\Attributes\Models\Attribute;
 
-final class SyncAttributeMetaAction
+final readonly class SyncAttributeMetaAction
 {
     /**
      * @param  Model&HasAttributes  $owner

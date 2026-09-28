@@ -8,7 +8,11 @@ use Illuminate\Database\Eloquent\Model;
 use RoundlyConsulting\Attributes\DataTransferObjects\RevisionData;
 use RoundlyConsulting\Attributes\Models\AttributeRevision;
 
-final class RecordAttributeRevisionAction
+/**
+ * @internal building block of the attach/detach actions — history is written
+ * as a side effect of a write, never on its own.
+ */
+final readonly class RecordAttributeRevisionAction
 {
     /**
      * Persist a revision for an owner's attribute change.

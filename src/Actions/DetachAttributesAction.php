@@ -12,7 +12,7 @@ use RoundlyConsulting\Attributes\Enums\RevisionType;
 use RoundlyConsulting\Attributes\Events\AttributeDetached;
 use RoundlyConsulting\Attributes\Models\Attribute;
 
-final class DetachAttributesAction
+final readonly class DetachAttributesAction
 {
     public function __construct(
         private readonly RecordAttributeRevisionAction $recordRevision,

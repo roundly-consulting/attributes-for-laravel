@@ -13,7 +13,7 @@ use RoundlyConsulting\Attributes\Events\AttributeAttached;
 use RoundlyConsulting\Attributes\Models\Attribute;
 use RoundlyConsulting\Attributes\Registry\AttributeRegistry;
 
-final class AttachAttributeAction
+final readonly class AttachAttributeAction
 {
     public function __construct(
         private readonly AttributeRegistry $registry,

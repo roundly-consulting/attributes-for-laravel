@@ -10,7 +10,7 @@ use RoundlyConsulting\Attributes\Contracts\HasAttributes;
 use RoundlyConsulting\Attributes\DataTransferObjects\AttributeData;
 use RoundlyConsulting\Attributes\Models\Attribute;
 
-final class AttachAttributesAction
+final readonly class AttachAttributesAction
 {
     public function __construct(
         private readonly AttachAttributeAction $attachAttribute,
