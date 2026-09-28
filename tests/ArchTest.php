@@ -2,8 +2,10 @@
 
 declare(strict_types=1);
 
+use RoundlyConsulting\Attributes\AttributesManager;
 use RoundlyConsulting\Attributes\Exceptions\AttributesException;
 use RoundlyConsulting\Attributes\Models\Attribute;
+use RoundlyConsulting\Attributes\OwnerAttributes;
 use RoundlyConsulting\Testing\Arch\ArchPresets;
 
 /**
@@ -22,7 +24,13 @@ ArchPresets::strictTypes('RoundlyConsulting\Attributes');
  * namespace, so Builders, Registry, Casts and the rest are now closed too — which is how
  * the un-final AttributesException surfaced at all.
  */
-ArchPresets::finalByDefault('RoundlyConsulting\Attributes', [Attribute::class, AttributesException::class]);
+ArchPresets::finalByDefault('RoundlyConsulting\Attributes', [
+    Attribute::class,
+    AttributesException::class,
+    // Extended by the shipped AttributesFake / RecordingOwnerAttributes — `final` would be a fatal.
+    AttributesManager::class,
+    OwnerAttributes::class,
+]);
 
 /**
  * The counter-weight, and the fleet's 7×-shipped fatal: `final` on a config-swappable
@@ -71,6 +79,13 @@ ArchPresets::morphColumnsUseTheSeam(__DIR__.'/../database/migrations');
 ArchPresets::runtimeRequireIsWhitelisted(__DIR__.'/../composer.json');
 
 ArchPresets::noDebuggingLeftovers();
+
+/**
+ * The one-path rule: the HasAttributes trait reaches every write through AttributesManager
+ * (`Attributes::for($this)`), never an action — so `Attributes::fake()` and a host override of
+ * the manager see trait writes too.
+ */
+ArchPresets::modelsGoThroughTheFacade('RoundlyConsulting\Attributes');
 
 /**
  * Kept: the presets have no equivalent, and the rule is real. AttributeType's backed
