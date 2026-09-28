@@ -52,9 +52,10 @@ return [
     | Strict Mode
     |--------------------------------------------------------------------------
     |
-    | When enabled, attaching an attribute whose name is not registered in the
-    | definitions below (or via the Attributes facade) throws an
-    | UnknownAttributeException. Leave disabled for free-form key/value usage.
+    | When enabled, writing an attribute (a value or its meta) whose name is not
+    | registered in the definitions below, via the Attributes facade, or in the
+    | owner model's own schema throws an UnknownAttributeException. Leave
+    | disabled for free-form key/value usage. Accepts true/false, 1/0, on/off.
     |
     */
 
@@ -78,7 +79,7 @@ return [
     | History / Audit Trail
     |--------------------------------------------------------------------------
     |
-    | When enabled, every attach/sync/detach records an old -> new revision in
+    | When enabled, every attach/sync/detach/meta change records an old -> new revision in
     | the attribute_revisions table, readable via $model->history(). Disabled
     | by default so there is no table cost unless you opt in. Encrypted values
     | are stored in their ciphertext form, so the audit log never leaks secrets.
@@ -99,22 +100,25 @@ return [
     | is the attribute name; the value supports:
     |
     |   - type:      one of AttributeType's backed values (string, integer,
-    |                float, boolean, array, datetime).
+    |                float, boolean, array, datetime). Values are validated
+    |                against it and stored in it ('5' -> 5 for an integer).
     |   - rules:     additional Laravel validation rules.
     |   - required:  bool; enforced by $model->validateAttributes().
-    |   - default:   value returned by typed reads when the attribute is unset.
+    |   - default:   value returned by reads when the attribute is not attached.
     |   - unique:    'owner' (unique per owner type), 'global' (unique across
     |                every owner), true (= owner), or false/'none' (default).
+    |                Backed by a unique index on a hash of the value — a keyed
+    |                blind index for encrypted values, so it covers them too.
     |   - encrypted: bool; stores the value as ciphertext via Crypt at rest.
     |
     | Models may also declare their own definitions via a public
     | attributeDefinitions() method or a $attributeDefinitions array property;
     | those override same-named global definitions for that model only.
     |
-    | Note: encrypted values cannot be matched by the whereAttribute* value
-    | scopes (ciphertext is non-deterministic), and whereAttributeBetween on
-    | the text column sorts lexicographically (reliable for ISO-8601 dates and
-    | strings; integer ranges are zero-pad-sensitive).
+    | Note: the query scopes compare typed values — numbers numerically,
+    | datetimes chronologically (they are stored in UTC), strings as text.
+    | Encrypted values cannot be matched, ranged or ordered by them (the
+    | ciphertext is non-deterministic).
     |
     |   'definitions' => [
     |       'rating' => ['type' => 'integer', 'rules' => ['min:1', 'max:5']],

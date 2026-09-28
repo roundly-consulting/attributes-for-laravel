@@ -41,9 +41,29 @@ Initial public release.
 - `SyncAttributesAction::execute()` returns the written `Attribute`s (`Collection<int, Attribute>`)
   instead of echoing its input.
 - `RecordAttributeRevisionAction` is `@internal`.
+- A definition's `type` is applied on store (`'5'` under an `integer` definition is stored as
+  `5`); datetimes are stored normalized to UTC and read back in the app timezone.
+- The query scopes compare typed values: `whereAttribute('code', 5)` no longer matches a stored
+  string `'5'`, numbers range and sort numerically, datetimes chronologically.
+- `unique` is backed by a unique index on a new `unique_hash` column (a keyed blind index for
+  encrypted values, built with `crypto-for-laravel`, now a hard dependency); each owner holds one
+  row per attribute name, and re-attaching a detached name restores its row.
+- `AttributeAttached`, `AttributeDetached` and `AttributesSynced` dispatch after the write's
+  transaction commits.
+- `assertKnown()` takes an optional owner, so strict mode honours per-model schemas.
 
 ### Fixed
 
 - `syncAttributes()` and `destroyAttributesExcept()` now remove attributes through the detach
   action, so they fire `AttributeDetached` and record a `detached` history revision (they used
   to delete rows silently).
+- `attributeDate()` returned the current time for every stored datetime.
+- `setMany()`, `sync()` and `stage()->save()` could leave a half-applied write when one value was
+  invalid; every value is now validated first and the writes share one transaction.
+- Strict mode rejected names declared in a model's own schema, and `meta()` bypassed strict
+  mode, history and events.
+- Setting a value without meta wiped the stored meta.
+- `unique` was never enforced for encrypted values, and uniqueness / one-row-per-name were
+  racy read-then-write checks.
+- `AttributeDetached` fired for names that were never attached.
+- Floats lost precision beyond 14 digits, and an explicitly stored `null` read as the default.

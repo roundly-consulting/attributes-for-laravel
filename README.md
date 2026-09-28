@@ -68,6 +68,7 @@ The published config file (`config/attributes.php`) exposes the following keys:
 return [
     'model' => \RoundlyConsulting\Attributes\Models\Attribute::class,
     'table' => 'attributes',
+    'key_type' => env('ATTRIBUTES_KEY_TYPE', 'bigint'),
     'strict' => env('ATTRIBUTES_STRICT', false),
     'prune_after_days' => env('ATTRIBUTES_PRUNE_AFTER_DAYS', 30),
     'history' => [
@@ -87,21 +88,24 @@ return [
 |-----|------|---------|-----|---------|
 | `model` | `class-string` | `RoundlyConsulting\Attributes\Models\Attribute` | — | Model used to persist attributes. Point it at a subclass to override casts/scopes. |
 | `table` | `string` | `attributes` | — | Table name used by the migration and model. |
-| `strict` | `bool` | `false` | `ATTRIBUTES_STRICT` | When `true`, attaching an unregistered attribute throws `UnknownAttributeException`. |
+| `key_type` | `string` | `bigint` | `ATTRIBUTES_KEY_TYPE` | Key type of the polymorphic `owner_id` column both migrations create: `bigint`, `uuid` or `ulid` (anything else falls back to `bigint`). Set it before you migrate; every owner model must share it. |
+| `strict` | `bool` | `false` | `ATTRIBUTES_STRICT` | When `true`, writing an attribute that has neither a global definition nor one in the owner model's own schema throws `UnknownAttributeException`. |
 | `prune_after_days` | `int` | `30` | `ATTRIBUTES_PRUNE_AFTER_DAYS` | Default age (days) for `attributes:prune`. |
-| `history.enabled` | `bool` | `false` | `ATTRIBUTES_HISTORY` | When `true`, records an old→new revision on every attach/sync/detach. |
+| `history.enabled` | `bool` | `false` | `ATTRIBUTES_HISTORY` | When `true`, records an old→new revision on every attach/sync/detach/meta change. |
 | `history.table` | `string` | `attribute_revisions` | — | Table name for the audit trail. |
 | `definitions` | `array` | `[]` | — | Registry seed. Each entry supports `type`, `rules`, `required`, `default`, `unique`, `encrypted`. |
+
+The boolean env values accept `true`/`false`, `1`/`0`, `on`/`off` and `yes`/`no`.
 
 Each definition entry accepts:
 
 | Definition key | Type | Purpose |
 |----------------|------|---------|
-| `type` | `string` | One of `AttributeType`: `string`, `integer`, `float`, `boolean`, `array`, `datetime`. |
+| `type` | `string` | One of `AttributeType`: `string`, `integer`, `float`, `boolean`, `array`, `datetime`. Values are validated against it **and stored in it** — a request string `'5'` under an `integer` definition is stored and read back as `5`. |
 | `rules` | `array` | Extra Laravel validation rules applied on attach. |
 | `required` | `bool` | Enforced by `$model->validateAttributes()`. |
-| `default` | `mixed` | Returned by typed reads when the attribute is unset. |
-| `unique` | `string`/`bool` | `'owner'` (per owner type), `'global'` (across every owner), `true` (= owner) or `false`/`'none'`. |
+| `default` | `mixed` | Returned by reads when the attribute is not attached. |
+| `unique` | `string`/`bool` | `'owner'` (per owner type), `'global'` (across every owner), `true` (= owner) or `false`/`'none'`. Backed by a database unique index — encrypted values included. |
 | `encrypted` | `bool` | Stores the value as ciphertext via `Crypt` at rest. |
 
 ## Usage
@@ -130,12 +134,13 @@ use RoundlyConsulting\Attributes\Facades\Attributes;
 
 // Writes (validated against definitions, recorded in history, events fired)
 Attributes::for($product)->set('color', 'red', meta: ['hex' => '#f00']);     // Attribute
+Attributes::for($product)->set('color', 'blue');                              // new value, meta kept
 Attributes::for($product)->setMany(['color' => 'red', 'size' => 'L']);        // Collection<Attribute>, keeps others
 Attributes::for($product)->sync(['color' => 'red'], forceDelete: false);      // exactly this set
 Attributes::for($product)->forget(['color'], forceDelete: false);             // int removed ('color' works too)
 Attributes::for($product)->forgetExcept(['color']);                           // list<string> removed
-Attributes::for($product)->meta('color', ['hex' => '#ff0000']);               // replace one attribute's meta
-Attributes::for($product)->stage()->set('color', 'red')->meta('color', [...])->save(); // or ->sync()
+Attributes::for($product)->meta('color', ['hex' => '#ff0000']);               // replace one attribute's meta (null clears)
+Attributes::for($product)->stage()->set('color', 'red')->meta('color', ['hex' => '#f00'])->save(); // or ->sync()
 
 // Reads
 Attributes::for($product)->all();          // Collection<name, value>
@@ -150,8 +155,16 @@ Attributes::prune(30);   // force-delete attributes trashed more than 30 days ag
 ```
 
 `setMany()` and `sync()` take an optional per-name meta map as their last argument
-(`meta: ['color' => ['hex' => '#f00']]`). Definitions and validation are on the facade too —
-see **Definitions & validation** below.
+(`meta: ['color' => ['hex' => '#f00']]`). A value write keeps the attribute's stored meta unless
+you pass new meta; `meta()` replaces it (and goes through strict mode, history and the
+`AttributeAttached` event like any other write). Definitions and validation are on the facade
+too — see **Definitions & validation** below.
+
+Writes are **all or nothing**: `setMany()`, `sync()` and `stage()->save()` validate every value
+before the first write and run in one database transaction, so an invalid value (or a failing
+write) leaves the owner exactly as it was — nothing detached, nothing half-written. Each owner
+holds one row per attribute name (a unique index backs it); attaching a name that was detached
+restores its row with a fresh value and meta.
 
 | Method | Returns |
 |---|---|
@@ -232,7 +245,10 @@ $product->getAttachedAttributeValue('on_sale');  // true
 ```
 
 The supported types are the cases of `RoundlyConsulting\Attributes\Enums\AttributeType`:
-`string`, `integer`, `float`, `boolean`, `array`, `datetime`.
+`string`, `integer`, `float`, `boolean`, `array`, `datetime`. Without a definition the type is
+taken from the PHP value; with one, the definition's type wins. Datetimes are stored normalized
+to UTC and read back as `CarbonImmutable` in your app timezone (the same instant); floats keep
+their full precision.
 
 ### The fluent builder
 
@@ -309,18 +325,22 @@ Product::query()->whereAttribute('rating', 5)->get();       // typed equality
 Product::query()->whereAttributeIn('rating', [3, 5])->get();
 Product::query()->whereHasAttribute('on_sale')->get();
 Product::query()->whereDoesntHaveAttribute('on_sale')->get();
-Product::query()->whereAttributeBetween('published_at', $from, $to)->get();
+Product::query()->whereAttributeBetween('rating', 2, 4)->get();              // numeric range
+Product::query()->whereAttributeBetween('published_at', $from, $to)->get();  // chronological
 Product::query()->whereAttributeNull('note')->get();      // present, value NULL
 Product::query()->whereAttributeNotNull('note')->get();
-Product::query()->orderByAttribute('rating', 'desc')->get();
+Product::query()->orderByAttribute('rating', 'desc')->get(); // 10, 9, 2 — numbers sort numerically
 ```
 
 The `Attribute` model also exposes `forName`, `forOwner`, and `ofType` scopes.
 
-> **Note:** values are stored in a text column, so `whereAttributeBetween` compares them
-> lexicographically — reliable for ISO-8601 datetimes and strings, but integer ranges are
-> zero-pad-sensitive. Encrypted values (below) cannot be matched by the `whereAttribute*` value
-> scopes because their ciphertext is non-deterministic.
+> **Note:** comparisons are **typed**. The value you pass is taken in the attribute's defined
+> type when it has a definition (so a request string `'5'` finds a stored integer `5`),
+> otherwise in its own PHP type — an integer `5` does not match a stored string `'5'`. Integers
+> and floats form one numeric family (`10` matches `10.0`). Numbers compare and sort
+> numerically, datetimes chronologically (they are stored in UTC, so bounds in any timezone
+> work), strings lexicographically. Encrypted values (below) cannot be matched, ranged or
+> sorted by these scopes because their ciphertext is non-deterministic.
 
 ### Updating metadata and removing attributes
 
@@ -358,8 +378,10 @@ $product->syncAttributes([
 
 ### Definitions & validation
 
-Register known attributes with a type and validation rules. When `strict` is enabled, attaching
-an unregistered attribute throws; registered attributes are always validated.
+Register known attributes with a type and validation rules. When `strict` is enabled, writing an
+unregistered attribute (a value or its meta) throws `UnknownAttributeException` — a name the
+owner model declares in its own schema counts as registered; registered attributes are always
+validated and stored in their defined type.
 
 ```php
 use RoundlyConsulting\Attributes\Facades\Attributes;
@@ -379,8 +401,9 @@ You can also seed definitions through the `definitions` config key.
 
 ### Per-model schemas
 
-A model can declare its own definitions, merged over the global config for that model only.
-Declare either a public `attributeDefinitions()` method or a `$attributeDefinitions` property:
+A model can declare its own definitions, merged over the global config for that model only (strict
+mode, validation, type, encryption, uniqueness and defaults all honour them). Declare either a
+public `attributeDefinitions()` method or a `$attributeDefinitions` property:
 
 ```php
 class Product extends Model implements HasAttributesContract
@@ -409,13 +432,21 @@ $product->validateAttributes(); // throws MissingRequiredAttributeException if a
 ```
 
 `unique` accepts `UniqueScope::Owner` (unique per owner type), `UniqueScope::Global_` (unique
-across every owner), or `UniqueScope::None`. Re-saving the same owner's own value is idempotent.
+across every owner), or `UniqueScope::None`. Re-saving the same owner's own value is idempotent,
+and detaching an attribute frees its value.
+
+Uniqueness is a **database guarantee**, not just a check before the write: each unique value
+carries a deterministic hash in the `unique_hash` column, which has a unique index — two
+concurrent writers of the same value cannot both commit (the loser gets
+`DuplicateAttributeValueException`). It works for **encrypted** values too: their hash is a
+keyed blind index (an HMAC under a key derived from `APP_KEY`), so the database never holds the
+plaintext. Rotating `APP_KEY` changes that key — re-save encrypted unique values afterwards.
 
 ### Default values
 
-A definition's `default` is returned by typed reads when the attribute is unset (defaults apply
-on **read only** — they are never persisted, and bulk `getAttachedAttributes()` lists stored rows
-only):
+A definition's `default` is returned by reads when the attribute is not attached (defaults apply
+on **read only** — they are never persisted, bulk `getAttachedAttributes()` lists stored rows
+only, and an attribute explicitly stored as `null` reads as `null`):
 
 ```php
 Attributes::define(new AttributeDefinitionData('retries', AttributeType::Integer, default: 3));
@@ -436,13 +467,14 @@ $product->attachAttribute('token', 'secret');
 $product->getAttachedAttributeValue('token'); // 'secret' (DB column holds ciphertext)
 ```
 
-Because the ciphertext is non-deterministic, encrypted values cannot be matched by the
-`whereAttribute*` value scopes.
+Because the ciphertext is non-deterministic, encrypted values cannot be matched, ranged or
+ordered by the query scopes. `unique` still works for them (see **Constraints**).
 
 ### History / audit trail
 
 Enable `attributes.history.enabled` (or `ATTRIBUTES_HISTORY=true`) to record an old→new revision
-on every attach/sync/detach. Disabled by default, so there is no table cost unless you opt in.
+on every attach/sync/detach and meta change. Disabled by default, so there is no table cost unless
+you opt in.
 
 ```php
 Attributes::for($product)->history();        // Collection<AttributeRevision> — newest first
@@ -464,7 +496,7 @@ never leaks secrets. Pruning the revisions table is left to the host application
 ```php
 catch (InvalidAttributeValueException $e) {
     $e->attributeName; // 'rating'
-    $e->messages();    // ['rating: The rating must be between 1 and 5.']
+    $e->messages();    // ['rating: The rating field must not be greater than 5.']
     $e->errorBag();    // Illuminate\Support\MessageBag|null
 }
 ```
@@ -473,9 +505,14 @@ catch (InvalidAttributeValueException $e) {
 
 Listen for these events to extend behaviour (audit logs, search re-indexing, syncing):
 
-- `RoundlyConsulting\Attributes\Events\AttributeAttached` — `(Model $owner, Attribute $attribute)`
-- `RoundlyConsulting\Attributes\Events\AttributeDetached` — `(Model $owner, string $name)`
+- `RoundlyConsulting\Attributes\Events\AttributeAttached` — `(Model $owner, Attribute $attribute)`, for
+  every value or meta write
+- `RoundlyConsulting\Attributes\Events\AttributeDetached` — `(Model $owner, string $name)`, only for
+  attributes that were actually attached
 - `RoundlyConsulting\Attributes\Events\AttributesSynced` — `(Model $owner, array $attributes)`
+
+They are dispatched once the write's transaction commits (`ShouldDispatchAfterCommit`), so a
+rolled-back write never announces itself.
 
 ### Console commands
 
@@ -532,6 +569,9 @@ This package builds on other roundly-consulting packages:
   case lookups (`fromName()`, `tryFromName()`, `fromLabel()`, `tryFromLabel()`, `hasName()`,
   `hasValue()`), and the fluent comparators (`is()`, `isNot()`, `isIn()`, `isNotIn()`,
   `whenIs*()`).
+- **[crypto-for-laravel](https://github.com/roundly-consulting/crypto-for-laravel)** — a hard
+  dependency. Its deterministic digest and HMAC build the `unique_hash` behind `unique`
+  definitions — the keyed blind index that makes uniqueness work for encrypted values.
 - **[package-toolkit-for-laravel](https://github.com/roundly-consulting/package-toolkit-for-laravel)**
   — a hard dependency. It provides the service-provider builder (config, migrations, commands and
   publish tags) and the validated `attributes.model` resolver, which checks that a swapped-in model
