@@ -6,11 +6,14 @@ namespace RoundlyConsulting\Attributes\Builders;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
-use RoundlyConsulting\Attributes\Actions\AttachAttributesAction;
-use RoundlyConsulting\Attributes\Actions\SyncAttributesAction;
 use RoundlyConsulting\Attributes\Contracts\HasAttributes;
-use RoundlyConsulting\Attributes\DataTransferObjects\AttributeData;
+use RoundlyConsulting\Attributes\OwnerAttributes;
 
+/**
+ * Stages several attributes (and their meta) for one owner, then persists them
+ * through the owner handle it came from — `Attributes::for($owner)->stage()` or
+ * `$owner->attributes()` — so the fake and host overrides see the write.
+ */
 final class AttributeWriter
 {
     /**
@@ -27,6 +30,7 @@ final class AttributeWriter
      * @param  Model&HasAttributes  $owner
      */
     public function __construct(
+        private readonly OwnerAttributes $attributes,
         private readonly Model $owner,
     ) {}
 
@@ -82,10 +86,8 @@ final class AttributeWriter
      */
     public function save(): Model
     {
-        $data = $this->stagedData();
-
-        if ($data !== []) {
-            app(AttachAttributesAction::class)->execute($this->owner, ...$data);
+        if ($this->values !== []) {
+            $this->attributes->setMany($this->values, $this->stagedMeta());
         }
 
         return $this->owner;
@@ -98,22 +100,19 @@ final class AttributeWriter
      */
     public function sync(bool $forceDelete = false): Model
     {
-        app(SyncAttributesAction::class)->execute($this->owner, $this->stagedData(), $forceDelete);
+        $this->attributes->sync($this->values, $forceDelete, $this->stagedMeta());
 
         return $this->owner;
     }
 
     /**
-     * @return list<AttributeData>
+     * Meta for staged values only — meta staged for a name with no value is
+     * not persisted (as before).
+     *
+     * @return array<string, Collection<string, mixed>>
      */
-    private function stagedData(): array
+    private function stagedMeta(): array
     {
-        $data = [];
-
-        foreach ($this->values as $name => $value) {
-            $data[] = new AttributeData($name, $value, $this->meta[$name] ?? null);
-        }
-
-        return $data;
+        return array_intersect_key($this->meta, $this->values);
     }
 }

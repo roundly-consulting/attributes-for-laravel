@@ -9,14 +9,9 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
-use RoundlyConsulting\Attributes\Actions\AttachAttributeAction;
-use RoundlyConsulting\Attributes\Actions\AttachAttributesAction;
-use RoundlyConsulting\Attributes\Actions\DetachAttributesAction;
-use RoundlyConsulting\Attributes\Actions\SyncAttributeMetaAction;
-use RoundlyConsulting\Attributes\Actions\SyncAttributesAction;
+use RoundlyConsulting\Attributes\AttributesManager;
 use RoundlyConsulting\Attributes\Builders\AttributeWriter;
 use RoundlyConsulting\Attributes\Contracts\HasAttributes as HasAttributesContract;
-use RoundlyConsulting\Attributes\DataTransferObjects\AttributeData;
 use RoundlyConsulting\Attributes\Exceptions\MissingRequiredAttributeException;
 use RoundlyConsulting\Attributes\Models\Attribute;
 use RoundlyConsulting\Attributes\Models\AttributeRevision;
@@ -26,6 +21,9 @@ use RoundlyConsulting\Attributes\Support\AttributeValueCaster;
 use RoundlyConsulting\Attributes\Support\StoredAttributeValue;
 
 /**
+ * Every write delegates to `Attributes::for($this)` (the AttributesManager), so
+ * host overrides and `Attributes::fake()` see trait calls too.
+ *
  * @mixin Model
  *
  * @phpstan-require-extends Model
@@ -77,7 +75,7 @@ trait HasAttributes
      */
     public function attributes(): AttributeWriter
     {
-        return new AttributeWriter($this);
+        return app(AttributesManager::class)->for($this)->stage();
     }
 
     /**
@@ -219,7 +217,7 @@ trait HasAttributes
      */
     public function attachAttribute(string $name, mixed $value = null, ?Collection $meta = null): static
     {
-        app(AttachAttributeAction::class)->execute($this, new AttributeData($name, $value, $meta));
+        app(AttributesManager::class)->for($this)->set($name, $value, $meta);
 
         return $this;
     }
@@ -229,14 +227,14 @@ trait HasAttributes
      */
     public function attachAttributes(array $attributes): static
     {
-        app(AttachAttributesAction::class)->execute($this, ...AttributeData::collection($attributes));
+        app(AttributesManager::class)->for($this)->setMany($attributes);
 
         return $this;
     }
 
     public function detachAttribute(string $name, bool $forceDelete = false): static
     {
-        app(DetachAttributesAction::class)->execute($this, [$name], $forceDelete);
+        app(AttributesManager::class)->for($this)->forget($name, $forceDelete);
 
         return $this;
     }
@@ -246,7 +244,7 @@ trait HasAttributes
      */
     public function detachAttributes(array $attributes, bool $forceDelete = false): static
     {
-        app(DetachAttributesAction::class)->execute($this, $attributes, $forceDelete);
+        app(AttributesManager::class)->for($this)->forget($attributes, $forceDelete);
 
         return $this;
     }
@@ -256,7 +254,7 @@ trait HasAttributes
      */
     public function syncAttributes(array $attributes, bool $forceDelete = false): static
     {
-        app(SyncAttributesAction::class)->execute($this, AttributeData::collection($attributes), $forceDelete);
+        app(AttributesManager::class)->for($this)->sync($attributes, $forceDelete);
 
         return $this;
     }
@@ -266,7 +264,7 @@ trait HasAttributes
      */
     public function syncAttributeMeta(string $name, ?Collection $meta = null): static
     {
-        app(SyncAttributeMetaAction::class)->execute($this, $name, $meta);
+        app(AttributesManager::class)->for($this)->meta($name, $meta);
 
         return $this;
     }
@@ -276,9 +274,7 @@ trait HasAttributes
      */
     public function destroyAttributesExcept(array $attributes, bool $forceDelete = false): static
     {
-        $query = $this->attachedAttributes()->whereNotIn('name', $attributes);
-
-        $forceDelete ? $query->forceDelete() : $query->delete();
+        app(AttributesManager::class)->for($this)->forgetExcept($attributes, $forceDelete);
 
         return $this;
     }
@@ -288,7 +284,7 @@ trait HasAttributes
      */
     public function destroyAttributes(array $attributes, bool $forceDelete = false): static
     {
-        app(DetachAttributesAction::class)->execute($this, $attributes, $forceDelete);
+        app(AttributesManager::class)->for($this)->forget($attributes, $forceDelete);
 
         return $this;
     }

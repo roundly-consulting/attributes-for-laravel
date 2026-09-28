@@ -2,9 +2,11 @@
 
 declare(strict_types=1);
 
+use Illuminate\Support\Facades\Event;
 use RoundlyConsulting\Attributes\DataTransferObjects\AttributeDefinitionData;
 use RoundlyConsulting\Attributes\Enums\AttributeType;
 use RoundlyConsulting\Attributes\Enums\RevisionType;
+use RoundlyConsulting\Attributes\Events\AttributeDetached;
 use RoundlyConsulting\Attributes\Facades\Attributes;
 use RoundlyConsulting\Attributes\Models\AttributeRevision;
 use RoundlyConsulting\Attributes\Tests\Models\Product;
@@ -66,4 +68,37 @@ it('stores encrypted values as ciphertext in the audit log', function (): void {
 
     expect($revision?->new_value)->not->toBe('plaintext-secret')
         ->and($revision?->new_value)->not->toBeNull();
+});
+
+it('regression: destroyAttributesExcept records a detached revision and event', function (): void {
+    config()->set('attributes.history.enabled', true);
+
+    $product = Product::query()->create();
+    $product->attachAttributes(['color' => 'white', 'size' => 'large']);
+
+    Event::fake([AttributeDetached::class]);
+
+    $product->destroyAttributesExcept(['color']);
+
+    expect($product->history('size')->first()?->type)->toBe(RevisionType::Detached)
+        ->and($product->history('color'))->toHaveCount(1);
+
+    Event::assertDispatched(AttributeDetached::class, fn (AttributeDetached $event): bool => $event->name === 'size');
+    Event::assertDispatchedTimes(AttributeDetached::class, 1);
+});
+
+it('regression: syncAttributes records a detached revision and event for removed attributes', function (): void {
+    config()->set('attributes.history.enabled', true);
+
+    $product = Product::query()->create();
+    $product->attachAttributes(['color' => 'white', 'size' => 'large']);
+
+    Event::fake([AttributeDetached::class]);
+
+    $product->syncAttributes(['color' => 'black']);
+
+    expect($product->history('size')->first()?->type)->toBe(RevisionType::Detached);
+
+    Event::assertDispatched(AttributeDetached::class, fn (AttributeDetached $event): bool => $event->name === 'size');
+    Event::assertDispatchedTimes(AttributeDetached::class, 1);
 });

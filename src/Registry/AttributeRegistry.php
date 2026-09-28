@@ -6,7 +6,6 @@ namespace RoundlyConsulting\Attributes\Registry;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Validator;
-use RoundlyConsulting\Attributes\Contracts\HasAttributes;
 use RoundlyConsulting\Attributes\DataTransferObjects\AttributeDefinitionData;
 use RoundlyConsulting\Attributes\Enums\UniqueScope;
 use RoundlyConsulting\Attributes\Exceptions\DuplicateAttributeValueException;
@@ -14,9 +13,13 @@ use RoundlyConsulting\Attributes\Exceptions\InvalidAttributeValueException;
 use RoundlyConsulting\Attributes\Exceptions\UnknownAttributeException;
 use RoundlyConsulting\Attributes\Models\Attribute;
 use RoundlyConsulting\Attributes\Support\AttributeModel;
-use RoundlyConsulting\Attributes\Support\AttributeQuery;
 use RoundlyConsulting\Attributes\Support\AttributeValueCaster;
 
+/**
+ * The attribute definitions (global and model-declared) and their validation.
+ * A container singleton the actions validate against; host code reaches it
+ * through the `Attributes` facade (AttributesManager delegates here).
+ */
 final class AttributeRegistry
 {
     /**
@@ -197,16 +200,6 @@ final class AttributeRegistry
         if ($query->exists()) {
             throw DuplicateAttributeValueException::forName($name, $definition->unique);
         }
-    }
-
-    /**
-     * Build a bulk read helper for an owner's attributes.
-     *
-     * @param  Model&HasAttributes  $owner
-     */
-    public function for(Model $owner): AttributeQuery
-    {
-        return new AttributeQuery($owner);
     }
 
     public function isStrict(): bool

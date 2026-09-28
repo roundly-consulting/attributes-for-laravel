@@ -45,6 +45,7 @@ final class AttributesServiceProvider extends PackageServiceProvider
         parent::register();
 
         $this->app->singleton(AttributeRegistry::class);
+        $this->app->singleton(AttributesManager::class);
     }
 
     public function boot(): void

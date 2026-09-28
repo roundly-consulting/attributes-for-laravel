@@ -6,6 +6,7 @@ namespace RoundlyConsulting\Attributes\Commands;
 
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
+use RoundlyConsulting\Attributes\AttributesManager;
 use RoundlyConsulting\Attributes\Support\AttributeModel;
 
 final class PruneAttributesCommand extends Command
@@ -14,7 +15,7 @@ final class PruneAttributesCommand extends Command
 
     protected $description = 'Permanently delete soft-deleted attributes older than the configured age';
 
-    public function handle(): int
+    public function handle(AttributesManager $attributes): int
     {
         $days = $this->resolveDays();
 
@@ -38,9 +39,9 @@ final class PruneAttributesCommand extends Command
             return self::SUCCESS;
         }
 
-        $query->forceDelete();
+        $pruned = $attributes->prune($days);
 
-        $this->info("Pruned {$count} attribute(s).");
+        $this->info("Pruned {$pruned} attribute(s).");
 
         return self::SUCCESS;
     }

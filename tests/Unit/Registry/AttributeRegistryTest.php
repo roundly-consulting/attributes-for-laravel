@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use RoundlyConsulting\Attributes\AttributesManager;
 use RoundlyConsulting\Attributes\AttributesServiceProvider;
 use RoundlyConsulting\Attributes\DataTransferObjects\AttributeDefinitionData;
 use RoundlyConsulting\Attributes\Enums\AttributeType;
@@ -183,11 +184,11 @@ it('validates against a model definition', function (): void {
     $this->registry->validateFor($product, 'rating', 99);
 })->throws(InvalidAttributeValueException::class);
 
-it('builds a bulk read helper for an owner', function (): void {
+it('the manager builds an owner handle', function (): void {
     $product = Product::query()->create();
     $product->attachAttribute('color', 'white');
 
-    expect($this->registry->for($product)->get('color'))->toBe('white');
+    expect(app(AttributesManager::class)->for($product)->get('color'))->toBe('white');
 });
 
 it('names the failing key in validation messages', function (): void {
