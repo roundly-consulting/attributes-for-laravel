@@ -110,11 +110,15 @@ trait HasAttributes
         return $this->attachedAttributes()->where('name', $name)->first();
     }
 
+    /**
+     * The stored value — or the declared default when the attribute is not
+     * attached. An attached attribute holding `null` reads as `null`.
+     */
     public function getAttachedAttributeValue(string $name): mixed
     {
-        $value = $this->getAttachedAttribute($name)?->value;
+        $attribute = $this->getAttachedAttribute($name);
 
-        return $value ?? $this->defaultFor($name);
+        return $attribute === null ? $this->defaultFor($name) : $attribute->value;
     }
 
     public function getAttachedAttributeValueAsString(string $name): ?string
@@ -173,13 +177,7 @@ trait HasAttributes
 
     public function attributeDate(string $name): ?Carbon
     {
-        $value = $this->getAttachedAttributeValue($name);
-
-        if ($value === null) {
-            return null;
-        }
-
-        return Carbon::parse(is_scalar($value) ? (string) $value : null);
+        return $this->attr($name)->date();
     }
 
     /**

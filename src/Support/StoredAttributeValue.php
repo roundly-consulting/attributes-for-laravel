@@ -67,17 +67,21 @@ final readonly class StoredAttributeValue implements Stringable
         return is_array($this->value) ? $this->value : [$this->value];
     }
 
+    /**
+     * The value as a Carbon — null when unset or when it is not a date at all (an
+     * array, say), never "now".
+     */
     public function date(): ?Carbon
     {
-        if ($this->value === null) {
-            return null;
-        }
-
         if ($this->value instanceof DateTimeInterface) {
             return Carbon::instance($this->value);
         }
 
-        return Carbon::parse(is_scalar($this->value) ? (string) $this->value : null);
+        if (! is_scalar($this->value)) {
+            return null;
+        }
+
+        return Carbon::parse((string) $this->value);
     }
 
     public function isNull(): bool
