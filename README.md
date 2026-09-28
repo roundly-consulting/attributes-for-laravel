@@ -120,6 +120,101 @@ class Product extends Model implements HasAttributesContract
 }
 ```
 
+### The `Attributes` facade
+
+`Attributes::for($owner)` returns the owner's attribute handle — every read and write in one
+place:
+
+```php
+use RoundlyConsulting\Attributes\Facades\Attributes;
+
+// Writes (validated against definitions, recorded in history, events fired)
+Attributes::for($product)->set('color', 'red', meta: ['hex' => '#f00']);     // Attribute
+Attributes::for($product)->setMany(['color' => 'red', 'size' => 'L']);        // Collection<Attribute>, keeps others
+Attributes::for($product)->sync(['color' => 'red'], forceDelete: false);      // exactly this set
+Attributes::for($product)->forget(['color'], forceDelete: false);             // int removed ('color' works too)
+Attributes::for($product)->forgetExcept(['color']);                           // list<string> removed
+Attributes::for($product)->meta('color', ['hex' => '#ff0000']);               // replace one attribute's meta
+Attributes::for($product)->stage()->set('color', 'red')->meta('color', [...])->save(); // or ->sync()
+
+// Reads
+Attributes::for($product)->all();          // Collection<name, value>
+Attributes::for($product)->toKeyValue();   // array<name, value>
+Attributes::for($product)->keys();         // list<string>
+Attributes::for($product)->get('color');   // value (or the defined default)
+Attributes::for($product)->has('color');   // bool
+Attributes::for($product)->history('color'); // Collection<AttributeRevision>, newest first
+
+// Housekeeping
+Attributes::prune(30);   // force-delete attributes trashed more than 30 days ago (default: config)
+```
+
+`setMany()` and `sync()` take an optional per-name meta map as their last argument
+(`meta: ['color' => ['hex' => '#f00']]`). Definitions and validation are on the facade too —
+see **Definitions & validation** below.
+
+| Method | Returns |
+|---|---|
+| `Attributes::for(Model $owner)` | `OwnerAttributes` — the handle above |
+| `Attributes::prune(?int $days = null)` | `int` |
+| `define()`, `defineMany()`, `forget(string $name)`, `flush()` | `AttributesManager` (chainable) |
+| `has()`, `get()`, `all()`, `resolveFor()`, `definitionsFor()`, `default()`, `requiredNames()`, `isStrict()` | definition reads |
+| `validate()`, `validateFor()`, `assertUnique()`, `assertKnown()` | `void` (throw on failure) |
+| `Attributes::fake()` | `AttributesFake` — see **Testing helper** |
+
+### Without the facade
+
+The facade is sugar over `RoundlyConsulting\Attributes\AttributesManager`, a container
+singleton. Inject it for the same API, or call an action for the raw use case — all three run
+the same code:
+
+```php
+use RoundlyConsulting\Attributes\Actions\AttachAttributeAction;
+use RoundlyConsulting\Attributes\AttributesManager;
+use RoundlyConsulting\Attributes\DataTransferObjects\AttributeData;
+
+final class ImportColor
+{
+    public function __construct(private AttributesManager $attributes) {}
+
+    public function __invoke(Product $product, string $color): void
+    {
+        $this->attributes->for($product)->set('color', $color);
+    }
+}
+
+// The raw action.
+app(AttachAttributeAction::class)->execute($product, new AttributeData('color', 'red'));
+```
+
+| Action | Facade path |
+|---|---|
+| `AttachAttributeAction` | `for($o)->set()` |
+| `AttachAttributesAction` | `for($o)->setMany()`, `for($o)->stage()->save()` |
+| `SyncAttributesAction` | `for($o)->sync()`, `for($o)->stage()->sync()` |
+| `DetachAttributesAction` | `for($o)->forget()` |
+| `DetachAttributesExceptAction` | `for($o)->forgetExcept()` |
+| `SyncAttributeMetaAction` | `for($o)->meta()` |
+| `PruneAttributesAction` | `prune()` |
+
+`RecordAttributeRevisionAction` is `@internal` — history is written by the actions above.
+
+### Model methods
+
+The `HasAttributes` trait keeps short model methods for the same operations. Every write goes
+through `Attributes::for($this)`, so host overrides and `Attributes::fake()` see them:
+
+| Model method | Same as |
+|---|---|
+| `attachAttribute($name, $value, $meta)` | `for($m)->set()` |
+| `attachAttributes([...])` | `for($m)->setMany()` |
+| `syncAttributes([...], $force)` | `for($m)->sync()` |
+| `detachAttribute($name)`, `detachAttributes([...])`, `destroyAttributes([...])` | `for($m)->forget()` |
+| `destroyAttributesExcept([...])` | `for($m)->forgetExcept()` |
+| `syncAttributeMeta($name, $meta)` | `for($m)->meta()` |
+| `attributes()` | `for($m)->stage()` |
+| `history(?$name)` | `for($m)->history()` |
+
 ### Typed values
 
 Values keep their real PHP type across write and read — no manual casting:
@@ -198,11 +293,7 @@ $product->attr('color')->isNull();      // bool
 use RoundlyConsulting\Attributes\Facades\Attributes;
 use RoundlyConsulting\Attributes\Models\Attribute;
 
-Attributes::for($product)->all();        // Collection<name, value>
 Attributes::for($product)->toKeyValue(); // array<name, value>
-Attributes::for($product)->keys();       // list<string>
-Attributes::for($product)->get('color'); // single value
-Attributes::for($product)->has('color'); // bool
 
 $product->attachedAttributes()->get()->toKeyValue(); // array<name, value>
 Attribute::collect()->keyByName();                   // collection keyed by name
@@ -236,6 +327,9 @@ The `Attribute` model also exposes `forName`, `forOwner`, and `ofType` scopes.
 Removals soft-delete by default; pass `true` to force-delete permanently.
 
 ```php
+Attributes::for($product)->meta('color', ['is_pretty' => 'yes']);
+Attributes::for($product)->forget('color', forceDelete: true);
+
 $product->syncAttributeMeta('color', collect(['is_pretty' => 'yes']));
 
 $product->detachAttribute('color');
@@ -245,11 +339,17 @@ $product->destroyAttributesExcept(['color']);
 $product->destroyAttributes(['price']);
 ```
 
+Every removal — including the extras `syncAttributes()` / `destroyAttributesExcept()` drop —
+fires `AttributeDetached` and records a `detached` revision when history is on. A force-deleting
+`sync` / `forgetExcept` also purges previously soft-deleted extras.
+
 ### Syncing
 
-`syncAttributes` makes the model's attributes match the given set exactly:
+`sync` makes the model's attributes match the given set exactly:
 
 ```php
+Attributes::for($product)->sync(['color' => 'black', 'size' => 'large']);
+
 $product->syncAttributes([
     'color' => 'black',
     'size'  => 'large',
@@ -345,6 +445,9 @@ Enable `attributes.history.enabled` (or `ATTRIBUTES_HISTORY=true`) to record an 
 on every attach/sync/detach. Disabled by default, so there is no table cost unless you opt in.
 
 ```php
+Attributes::for($product)->history();        // Collection<AttributeRevision> — newest first
+Attributes::for($product)->history('color'); // filtered by attribute name
+
 $product->history();          // Collection<AttributeRevision> — newest first
 $product->history('color');   // filtered by attribute name
 $product->attributeHistory(); // the underlying MorphMany relation
@@ -383,6 +486,39 @@ php artisan attributes:list "App\Models\Product" 42
 # Permanently delete soft-deleted attributes older than N days (default from config):
 php artisan attributes:prune --days=30 --force
 ```
+
+The prune command asks before deleting and then runs `Attributes::prune($days)`, which you can
+also schedule directly.
+
+### Testing helper
+
+`Attributes::fake()` swaps the manager for a recording fake — in the facade **and** in the
+container, so injected `AttributesManager`s, the owner handle, the staged writer and every
+`HasAttributes` model method are recorded. Writes still hit your test database (so reads,
+validation and history behave normally) and are recorded once they succeed. Definitions keep
+using the real registry and are not recorded.
+
+```php
+use RoundlyConsulting\Attributes\Facades\Attributes;
+
+$fake = Attributes::fake();
+
+$product->attachAttribute('color', 'red');     // model method — recorded
+
+$fake->assertSet($product, 'color', 'red');
+$fake->assertNothingForgotten();
+```
+
+| Write | Assert | Negative |
+|---|---|---|
+| `set()`, `setMany()` (one per attribute), `stage()->save()`, `attachAttribute(s)()` | `assertSet($owner, $name, $value?)` — pass a value to compare it (`null` included) | `assertNothingSet()` |
+| `forget()`, `forgetExcept()` (one per removed name), `detachAttribute(s)()`, `destroyAttributes*()` | `assertForgotten($owner, $name)` | `assertNothingForgotten()` |
+| `sync()`, `stage()->sync()`, `syncAttributes()` | `assertSynced($owner, ?array $attributes)` | `assertNothingSynced()` |
+| `meta()`, `syncAttributeMeta()` | `assertMetaSet($owner, $name, ?array $meta)` | `assertNothingMetaSet()` |
+| `prune()`, `attributes:prune` | `assertPruned()` | `assertNothingPruned()` |
+| anything | — | `assertNothingWritten()` |
+
+`$fake->recorded()` returns the raw `RecordedWrite` list.
 
 ## Integrates with
 
