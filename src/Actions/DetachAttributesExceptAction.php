@@ -17,7 +17,7 @@ final readonly class DetachAttributesExceptAction
      * Detach every attached attribute not named in `$keep` — through
      * DetachAttributesAction, so each fires AttributeDetached and records a
      * detached revision. With `$forceDelete`, previously soft-deleted extras
-     * are purged too. Returns the names that were detached.
+     * are purged too. Returns the names that were detached, oldest first.
      *
      * @param  Model&HasAttributes  $owner
      * @param  list<string>  $keep
@@ -25,9 +25,12 @@ final readonly class DetachAttributesExceptAction
      */
     public function execute(Model $owner, array $keep, bool $forceDelete = false): array
     {
+        $relation = $owner->attachedAttributes();
+
         /** @var list<string> $names */
-        $names = $owner->attachedAttributes()
+        $names = $relation
             ->whereNotIn('name', $keep)
+            ->orderBy($relation->getRelated()->getKeyName())
             ->pluck('name')
             ->map(static fn (mixed $name): string => (string) $name)
             ->values()

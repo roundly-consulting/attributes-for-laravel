@@ -74,7 +74,7 @@ it('sets many attributes with a per-name meta map, keeping others', function ():
 
     expect($written)->toHaveCount(2)
         ->each->toBeInstanceOf(Attribute::class)
-        ->and(Attributes::for($product)->toKeyValue())->toBe(['keep' => 'me', 'color' => 'red', 'size' => 'L'])
+        ->and(Attributes::for($product)->toKeyValue())->toEqual(['keep' => 'me', 'color' => 'red', 'size' => 'L'])
         ->and($product->getAttachedAttributeMeta('color')?->get('hex'))->toBe('#f00')
         ->and($product->getAttachedAttributeMeta('size'))->toBeNull();
 });
@@ -184,7 +184,7 @@ it('stages writes with meta and saves or syncs them', function (): void {
     $returned = $stage->set('color', 'red')->meta('color', ['hex' => '#f00'])->meta('ghost', ['a' => 1])->save();
 
     expect($returned)->toBe($product)
-        ->and(Attributes::for($product)->toKeyValue())->toBe(['old' => 'x', 'color' => 'red'])
+        ->and(Attributes::for($product)->toKeyValue())->toEqual(['old' => 'x', 'color' => 'red'])
         ->and($product->getAttachedAttributeMeta('color')?->get('hex'))->toBe('#f00')
         ->and(Attributes::for($product)->has('ghost'))->toBeFalse();
 
