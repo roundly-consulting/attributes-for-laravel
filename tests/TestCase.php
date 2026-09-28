@@ -6,6 +6,7 @@ namespace RoundlyConsulting\Attributes\Tests;
 
 use Illuminate\Support\ServiceProvider;
 use RoundlyConsulting\Attributes\AttributesServiceProvider;
+use RoundlyConsulting\Crypto\CryptoServiceProvider;
 use RoundlyConsulting\Testing\PackageTestCase;
 
 abstract class TestCase extends PackageTestCase
@@ -13,17 +14,16 @@ abstract class TestCase extends PackageTestCase
     /**
      * Every provider attributes hard-requires, in registration order.
      *
-     * The list is exactly one entry, and that is a measured fact rather than an
-     * oversight: attributes `require`s enums-for-laravel and package-toolkit-for-laravel,
-     * but neither ships a `laravel.providers` entry — the toolkit is the base class this
-     * provider extends and enums is a trait/helper library. There is nothing for a host to
-     * auto-discover, so nothing for the suite to mirror.
+     * crypto-for-laravel ships a `laravel.providers` entry, so a host auto-discovers it and the
+     * suite mirrors that. The other two roundly requires ship none: package-toolkit is the base
+     * class this provider extends and enums is a trait/helper library — there is nothing to
+     * discover for them.
      *
      * @return list<class-string<ServiceProvider>>
      */
     protected function packageProviders(): array
     {
-        return [AttributesServiceProvider::class];
+        return [CryptoServiceProvider::class, AttributesServiceProvider::class];
     }
 
     /**
