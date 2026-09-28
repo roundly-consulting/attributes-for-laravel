@@ -96,7 +96,8 @@ readonly class OwnerAttributes
     // Writes ------------------------------------------------------------------
 
     /**
-     * Attach (or update) one attribute, validated against its definition.
+     * Attach (or update) one attribute, validated against its definition and
+     * stored in its type. The stored meta is kept unless `$meta` is given.
      *
      * @param  array<string, mixed>|Collection<string, mixed>|null  $meta
      */
@@ -107,8 +108,9 @@ readonly class OwnerAttributes
     }
 
     /**
-     * Attach (or update) several attributes, keeping any others. `$meta` is an
-     * optional per-name meta map.
+     * Attach (or update) several attributes, keeping any others — all or
+     * nothing: every value is validated before the first write, and the writes
+     * share one transaction. `$meta` is an optional per-name meta map.
      *
      * @param  array<string, mixed>  $attributes  name => value
      * @param  array<string, array<string, mixed>|Collection<string, mixed>>  $meta  name => meta
@@ -122,7 +124,7 @@ readonly class OwnerAttributes
 
     /**
      * Make the owner's attributes exactly this set: attach/update the given
-     * ones and detach every other.
+     * ones and detach every other — all or nothing, like `setMany()`.
      *
      * @param  array<string, mixed>  $attributes  name => value
      * @param  array<string, array<string, mixed>|Collection<string, mixed>>  $meta  name => meta
@@ -160,8 +162,9 @@ readonly class OwnerAttributes
     }
 
     /**
-     * Replace one attribute's meta (attaching a null-valued attribute when it
-     * is not attached yet).
+     * Replace one attribute's meta — `null` clears it — attaching a null-valued
+     * attribute when it is not attached yet. Strict mode, history and the
+     * AttributeAttached event apply as for a value write.
      *
      * @param  array<string, mixed>|Collection<string, mixed>|null  $meta
      */

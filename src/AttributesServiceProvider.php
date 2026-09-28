@@ -12,6 +12,7 @@ use RoundlyConsulting\Attributes\Support\AttributeModel;
 use RoundlyConsulting\PackageToolkit\Concerns\RegistersBlueprintMacros;
 use RoundlyConsulting\PackageToolkit\Package;
 use RoundlyConsulting\PackageToolkit\PackageServiceProvider;
+use RoundlyConsulting\PackageToolkit\Support\Config;
 
 final class AttributesServiceProvider extends PackageServiceProvider
 {
@@ -30,8 +31,8 @@ final class AttributesServiceProvider extends PackageServiceProvider
             ->contributesToAbout(static fn (): array => [
                 'Model' => class_basename(AttributeModel::class()),
                 'Table' => self::table(),
-                'Strict mode' => config('attributes.strict', false) === true ? 'ON' : 'OFF',
-                'History' => config('attributes.history.enabled', false) === true ? 'ON' : 'OFF',
+                'Strict mode' => Config::boolean('attributes.strict') ? 'ON' : 'OFF',
+                'History' => Config::boolean('attributes.history.enabled') ? 'ON' : 'OFF',
                 'Prune after' => self::pruneAfterDays().' day(s)',
                 // Definitions are reported by count only: an attribute name is a
                 // host's field name (api_token, ssn, …) and often names the very

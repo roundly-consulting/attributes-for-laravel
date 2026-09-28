@@ -38,3 +38,30 @@ it('returns zero and dispatches nothing for an empty list', function (): void {
 
     Event::assertNotDispatched(AttributeDetached::class);
 });
+
+/**
+ * Review 2026-09-28: AttributeDetached fired once per requested name, including names
+ * that were never attached.
+ */
+it('fires AttributeDetached only for attributes that were attached', function (): void {
+    $product = Product::create();
+    $product->attachAttribute('color', 'white');
+
+    $detached = [];
+    Event::listen(AttributeDetached::class, function (AttributeDetached $event) use (&$detached): void {
+        $detached[] = $event->name;
+    });
+
+    $count = app(DetachAttributesAction::class)->execute($product, ['ghost1', 'color', 'ghost2']);
+
+    expect($count)->toBe(1)
+        ->and($detached)->toBe(['color']);
+});
+
+it('fires nothing when none of the names is attached', function (): void {
+    Event::fake([AttributeDetached::class]);
+
+    expect(app(DetachAttributesAction::class)->execute(Product::create(), ['ghost1', 'ghost2']))->toBe(0);
+
+    Event::assertNotDispatched(AttributeDetached::class);
+});

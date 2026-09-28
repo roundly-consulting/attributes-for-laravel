@@ -8,8 +8,10 @@ use Illuminate\Contracts\Database\Eloquent\CastsAttributes;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use RoundlyConsulting\Attributes\Enums\AttributeType;
+use RoundlyConsulting\Attributes\Exceptions\InvalidAttributeValueException;
 use RoundlyConsulting\Attributes\Registry\AttributeRegistry;
 use RoundlyConsulting\Attributes\Support\AttributeValueCaster;
+use RoundlyConsulting\Attributes\Support\UniqueIndex;
 
 /**
  * @implements CastsAttributes<mixed, mixed>
@@ -35,41 +37,45 @@ final class AttributeValue implements CastsAttributes
     }
 
     /**
+     * Store a value in its definition's type (inferred from the PHP value only when
+     * the name has no definition), encrypted when the definition says so, with the
+     * `unique_hash` a unique definition's index is enforced on.
+     *
      * @param  array<string, mixed>  $attributes
      * @return array<string, mixed>
      */
     public function set(Model $model, string $key, mixed $value, array $attributes): array
     {
-        $encrypt = $this->shouldEncrypt($model, $attributes);
+        $name = is_string($attributes['name'] ?? null) ? $attributes['name'] : null;
 
-        $stored = new AttributeValueCaster()->toStorage($value, null, $encrypt);
+        $definition = $name === null
+            ? null
+            : app(AttributeRegistry::class)->resolveFor($this->resolveOwner($model, $attributes), $name);
+
+        $caster = new AttributeValueCaster;
+
+        try {
+            $plain = $caster->plain($value, $definition?->type);
+        } catch (InvalidAttributeValueException $exception) {
+            throw InvalidAttributeValueException::forName(
+                $name ?? $key,
+                'expected a value of type ['.($definition?->type->value ?? AttributeType::forValue($value)->value).']',
+                $exception,
+            );
+        }
+
+        $stored = $caster->seal($plain, $definition !== null && $definition->encrypted);
+
+        $ownerType = $attributes['owner_type'] ?? null;
 
         return [
             'value' => $stored->value,
             'value_type' => $stored->type->value,
             'is_encrypted' => $stored->encrypted,
+            'unique_hash' => $definition === null
+                ? null
+                : UniqueIndex::for($definition, is_string($ownerType) ? $ownerType : null, $plain->value),
         ];
-    }
-
-    /**
-     * Resolve the per-definition encryption flag from the registry by name.
-     *
-     * @param  array<string, mixed>  $attributes
-     */
-    private function shouldEncrypt(Model $model, array $attributes): bool
-    {
-        $name = $attributes['name'] ?? null;
-
-        if (! is_string($name)) {
-            return false;
-        }
-
-        $definition = app(AttributeRegistry::class)->resolveFor(
-            $this->resolveOwner($model, $attributes),
-            $name,
-        );
-
-        return $definition !== null && $definition->encrypted;
     }
 
     /**

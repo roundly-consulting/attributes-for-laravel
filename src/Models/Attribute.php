@@ -25,6 +25,7 @@ use RoundlyConsulting\Attributes\Support\AttributeModel;
  * @property mixed $value
  * @property string|null $value_type
  * @property bool $is_encrypted
+ * @property string|null $unique_hash
  * @property-read AttributeType $type
  * @property Collection<string, mixed>|null $meta
  * @property Carbon|null $created_at
@@ -42,6 +43,14 @@ class Attribute extends Model
     use SoftDeletes;
 
     protected $guarded = [];
+
+    /**
+     * The unique index's bookkeeping column — a blind index for encrypted values —
+     * is never part of a serialized attribute.
+     *
+     * @var list<string>
+     */
+    protected $hidden = ['unique_hash'];
 
     public function getTable(): string
     {
@@ -126,6 +135,24 @@ class Attribute extends Model
         $collection = AttributeModel::class()::query()->get();
 
         return $collection;
+    }
+
+    /**
+     * A soft-deleted value gives up its unique slot, exactly as the pre-check never
+     * counted trashed rows — so a host calling `$attribute->delete()` directly frees
+     * the value too. (A host subclass overriding `booted()` calls `parent::booted()`.)
+     */
+    protected static function booted(): void
+    {
+        static::softDeleted(static function (Attribute $attribute): void {
+            if ($attribute->unique_hash === null) {
+                return;
+            }
+
+            $attribute->newQueryWithoutScopes()->whereKey($attribute->getKey())->update(['unique_hash' => null]);
+            $attribute->unique_hash = null;
+            $attribute->syncOriginalAttribute('unique_hash');
+        });
     }
 
     protected static function newFactory(): AttributeFactory

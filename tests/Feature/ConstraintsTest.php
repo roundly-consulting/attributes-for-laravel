@@ -40,10 +40,8 @@ it('blocks a duplicate global value across owners', function (): void {
 it('blocks a global duplicate even across different owner types', function (): void {
     Attributes::define(new AttributeDefinitionData('sku', AttributeType::String_, unique: UniqueScope::Global_));
 
-    $product = Product::query()->create();
-    $product->attachAttribute('sku', 'ZZZ');
-
-    // Mimic a row owned by a different morph type holding the same value.
+    // A row owned by a different morph type holds the value first. (Written after
+    // the Product's instead, the unique index itself rejects it.)
     Attribute::query()->create([
         'owner_type' => 'other-type',
         'owner_id' => 999,

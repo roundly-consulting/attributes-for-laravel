@@ -29,7 +29,7 @@ use RoundlyConsulting\Attributes\Testing\AttributesFake;
  * @method static void validateFor(?Model $owner, string $name, mixed $value)
  * @method static void assertUnique(Model $owner, string $name, mixed $value)
  * @method static bool isStrict()
- * @method static void assertKnown(string $name)
+ * @method static void assertKnown(string $name, ?Model $owner = null)
  *
  * @see AttributesManager
  */

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace RoundlyConsulting\Attributes\Registry;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Validator;
 use RoundlyConsulting\Attributes\DataTransferObjects\AttributeDefinitionData;
@@ -14,6 +15,8 @@ use RoundlyConsulting\Attributes\Exceptions\UnknownAttributeException;
 use RoundlyConsulting\Attributes\Models\Attribute;
 use RoundlyConsulting\Attributes\Support\AttributeModel;
 use RoundlyConsulting\Attributes\Support\AttributeValueCaster;
+use RoundlyConsulting\Attributes\Support\UniqueIndex;
+use RoundlyConsulting\PackageToolkit\Support\Config;
 
 /**
  * The attribute definitions (global and model-declared) and their validation.
@@ -168,7 +171,26 @@ final class AttributeRegistry
     }
 
     /**
-     * Enforce a definition's uniqueness scope before a value is stored.
+     * Everything a write must pass before it touches the database: strict mode
+     * (honouring the owner's own schema), the definition's rules and its unique
+     * scope. The batch writers run it for every item before the first write.
+     *
+     * @throws UnknownAttributeException
+     * @throws InvalidAttributeValueException
+     * @throws DuplicateAttributeValueException
+     */
+    public function assertWritable(Model $owner, string $name, mixed $value): void
+    {
+        $this->assertKnown($name, $owner);
+        $this->validateFor($owner, $name, $value);
+        $this->assertUnique($owner, $name, $value);
+    }
+
+    /**
+     * Enforce a definition's uniqueness scope before a value is stored — works for
+     * encrypted values too, through their deterministic `unique_hash`. The unique
+     * index on that column is the real guarantee; this check turns the common case
+     * into a friendly exception before any write.
      *
      * Allows re-saving the owner's own existing value (idempotent update).
      *
@@ -182,17 +204,34 @@ final class AttributeRegistry
             return;
         }
 
-        $stored = new AttributeValueCaster()->toStorage($value, $definition->type)->value;
+        try {
+            $plain = new AttributeValueCaster()->plain($value, $definition->type)->value;
+        } catch (InvalidAttributeValueException $exception) {
+            throw InvalidAttributeValueException::forName($name, "expected a value of type [{$definition->type->value}]", $exception);
+        }
+
+        $hash = UniqueIndex::for($definition, $owner->getMorphClass(), $plain);
 
         $query = $this->attributeModel()->newQuery()
             ->where('name', $name)
-            ->where('value', $stored);
+            ->where(function (Builder $match) use ($hash, $plain, $definition): void {
+                $match->where('unique_hash', $hash);
+
+                // A plain value stored before its definition became unique has no
+                // hash yet; its text is still comparable.
+                if (! $definition->encrypted) {
+                    $match->orWhere(fn (Builder $legacy): Builder => $legacy
+                        ->whereNull('unique_hash')
+                        ->where('is_encrypted', false)
+                        ->where('value', $plain));
+                }
+            });
 
         if ($definition->unique === UniqueScope::Owner) {
             $query->where('owner_type', $owner->getMorphClass());
         }
 
-        $query->where(function ($sub) use ($owner): void {
+        $query->where(function (Builder $sub) use ($owner): void {
             $sub->where('owner_type', '!=', $owner->getMorphClass())
                 ->orWhere('owner_id', '!=', $owner->getKey());
         });
@@ -204,17 +243,18 @@ final class AttributeRegistry
 
     public function isStrict(): bool
     {
-        return (bool) config('attributes.strict', false);
+        return Config::boolean('attributes.strict');
     }
 
     /**
-     * Reject unknown keys when strict mode is enabled.
+     * Reject unknown keys when strict mode is enabled. A name is known when it has
+     * a global definition or — given the owner — one in the owner's own schema.
      *
      * @throws UnknownAttributeException
      */
-    public function assertKnown(string $name): void
+    public function assertKnown(string $name, ?Model $owner = null): void
     {
-        if ($this->isStrict() && ! $this->has($name)) {
+        if ($this->isStrict() && $this->resolveFor($owner, $name) === null) {
             throw UnknownAttributeException::forName($name);
         }
     }

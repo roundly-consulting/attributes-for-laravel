@@ -22,12 +22,18 @@ return new class extends Migration
             $table->string('name');
             $table->text('value')->nullable();
             $table->string('value_type')->nullable()->default(AttributeType::String_->value);
-            $table->boolean('is_encrypted')->default(false)->after('value_type');
+            $table->boolean('is_encrypted')->default(false);
+            // Deterministic hash of a value under a `unique` definition (keyed for
+            // encrypted values); null otherwise. The unique index makes uniqueness a
+            // database guarantee instead of a read-then-write check.
+            $table->string('unique_hash', 64)->nullable()->unique();
             $table->jsonb('meta')->nullable();
             $table->timestamps();
             $table->softDeletes();
 
-            $table->index(['owner_type', 'owner_id', 'name']);
+            // One row per owner + name — soft-deleted rows included: re-attaching a
+            // detached name restores its row.
+            $table->unique(['owner_type', 'owner_id', 'name']);
         });
     }
 

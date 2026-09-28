@@ -7,6 +7,7 @@ namespace RoundlyConsulting\Attributes\Actions;
 use Illuminate\Database\Eloquent\Model;
 use RoundlyConsulting\Attributes\DataTransferObjects\RevisionData;
 use RoundlyConsulting\Attributes\Models\AttributeRevision;
+use RoundlyConsulting\PackageToolkit\Support\Config;
 
 /**
  * @internal building block of the attach/detach actions — history is written
@@ -41,6 +42,6 @@ final readonly class RecordAttributeRevisionAction
 
     public function enabled(): bool
     {
-        return (bool) config('attributes.history.enabled', false);
+        return Config::boolean('attributes.history.enabled');
     }
 }

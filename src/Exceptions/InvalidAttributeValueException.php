@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace RoundlyConsulting\Attributes\Exceptions;
 
 use Illuminate\Support\MessageBag;
+use Throwable;
 
 final class InvalidAttributeValueException extends AttributesException
 {
@@ -12,9 +13,9 @@ final class InvalidAttributeValueException extends AttributesException
 
     private ?MessageBag $errors = null;
 
-    public static function forName(string $name, string $reason): self
+    public static function forName(string $name, string $reason, ?Throwable $previous = null): self
     {
-        $exception = new self("Attribute [{$name}] has an invalid value: {$reason}");
+        $exception = new self("Attribute [{$name}] has an invalid value: {$reason}", 0, $previous);
 
         $exception->attributeName = $name;
 

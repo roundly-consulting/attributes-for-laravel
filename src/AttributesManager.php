@@ -160,10 +160,13 @@ class AttributesManager
     }
 
     /**
+     * Reject a name strict mode does not know — a global definition, or given
+     * the owner, one in the owner's own schema.
+     *
      * @throws UnknownAttributeException
      */
-    public function assertKnown(string $name): void
+    public function assertKnown(string $name, ?Model $owner = null): void
     {
-        $this->registry->assertKnown($name);
+        $this->registry->assertKnown($name, $owner);
     }
 }

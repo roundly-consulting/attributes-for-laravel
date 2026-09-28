@@ -4,10 +4,14 @@ declare(strict_types=1);
 
 namespace RoundlyConsulting\Attributes\Events;
 
+use Illuminate\Contracts\Events\ShouldDispatchAfterCommit;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Events\Dispatchable;
 
-final class AttributeDetached
+/**
+ * Dispatched once the write's transaction commits — never for a rolled-back write.
+ */
+final class AttributeDetached implements ShouldDispatchAfterCommit
 {
     use Dispatchable;
 

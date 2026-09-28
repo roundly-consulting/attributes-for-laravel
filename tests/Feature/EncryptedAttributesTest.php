@@ -22,9 +22,12 @@ it('stores ciphertext at rest for each type', function (mixed $value, AttributeT
 
     $row = DB::table('attributes')->where('name', 'secret')->first();
 
+    $read = $product->fresh()->getAttachedAttributeValue('secret');
+
     expect((int) $row->is_encrypted)->toBe(1)
         ->and($row->value)->not->toBe((string) (is_array($value) ? json_encode($value) : $value))
-        ->and($product->fresh()->getAttachedAttributeValue('secret'))->toEqual($value);
+        // A datetime definition reads its value back as a date (the same instant).
+        ->and($read instanceof DateTimeInterface ? $read->format(DATE_ATOM) : $read)->toEqual($value);
 })->with([
     'string' => ['hunter2', AttributeType::String_],
     'integer' => [42, AttributeType::Integer],
