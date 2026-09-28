@@ -190,3 +190,35 @@ it('throws resolving an unknown name or label', function (): void {
 it('throws resolving an unknown label', function (): void {
     AttributeType::fromLabel('Missing');
 })->throws(EnumException::class);
+
+it('marks integer and float as the numeric family', function (): void {
+    expect(AttributeType::Integer->isNumeric())->toBeTrue()
+        ->and(AttributeType::Float_->isNumeric())->toBeTrue()
+        ->and(AttributeType::String_->isNumeric())->toBeFalse()
+        ->and(AttributeType::DateTime->isNumeric())->toBeFalse();
+});
+
+it('stores datetimes in UTC and reads them back in the app timezone', function (): void {
+    $stored = AttributeType::DateTime->toStorage('2026-01-01 10:00:00+01:00');
+
+    expect($stored)->toBe('2026-01-01T09:00:00+00:00')
+        ->and(AttributeType::DateTime->fromStorage($stored)?->getTimezone()->getName())->toBe(date_default_timezone_get());
+});
+
+it('rejects a string that is not a date', function (): void {
+    AttributeType::DateTime->toStorage('not a date at all');
+})->throws(InvalidAttributeValueException::class, 'expected a date value');
+
+it('rejects a non-finite float', function (float $value): void {
+    AttributeType::Float_->toStorage($value);
+})->with(['inf' => INF, 'nan' => NAN])->throws(InvalidAttributeValueException::class, 'expected a finite numeric value');
+
+it('reads request strings as booleans', function (string $value, string $stored): void {
+    expect(AttributeType::Boolean->toStorage($value))->toBe($stored);
+})->with([
+    ['1', '1'], ['0', '0'], ['true', '1'], ['false', '0'], ['on', '1'], ['off', '0'], ['', '0'],
+]);
+
+it('rejects a fractional float for an integer', function (): void {
+    AttributeType::Integer->toStorage(5.5);
+})->throws(InvalidAttributeValueException::class, 'expected an integer value');

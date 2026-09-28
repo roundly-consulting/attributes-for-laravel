@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace RoundlyConsulting\Attributes\Enums;
 
+use Carbon\CarbonImmutable;
+use Carbon\Exceptions\InvalidFormatException;
 use DateTimeInterface;
 use Illuminate\Support\Carbon;
 use RoundlyConsulting\Attributes\Exceptions\InvalidAttributeValueException;
@@ -36,7 +38,20 @@ enum AttributeType: string
     }
 
     /**
+     * Whether values of this type compare and sort as numbers (integer and float
+     * form one numeric family: `10` and `10.0` are the same value).
+     */
+    public function isNumeric(): bool
+    {
+        return $this === self::Integer || $this === self::Float_;
+    }
+
+    /**
      * Convert a typed value into its string column form.
+     *
+     * Datetimes are normalized to UTC so the stored strings of one instant are
+     * identical and sort chronologically; floats keep the shortest form that
+     * reads back as the very same float.
      */
     public function toStorage(mixed $value): string
     {
@@ -64,7 +79,8 @@ enum AttributeType: string
             self::Integer => (int) $stored,
             self::Float_ => (float) $stored,
             self::Array_ => $this->decodeArray($stored),
-            self::DateTime => Carbon::parse($stored)->toImmutable(),
+            // Stored in UTC; handed back as the same instant in the app timezone.
+            self::DateTime => CarbonImmutable::parse($stored)->setTimezone(date_default_timezone_get()),
             self::String_ => $stored,
         };
     }
@@ -91,6 +107,11 @@ enum AttributeType: string
 
     private function encodeBoolean(mixed $value): string
     {
+        // A request string ('0', 'false', 'off') means what it says, not PHP truthiness.
+        if (is_string($value)) {
+            $value = filter_var($value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? $value !== '';
+        }
+
         return $value ? '1' : '0';
     }
 
@@ -98,6 +119,15 @@ enum AttributeType: string
     {
         if (is_int($value)) {
             return $value;
+        }
+
+        if (is_bool($value)) {
+            return (int) $value;
+        }
+
+        // Laravel's `integer` rule accepts an integral float (5.0) — so must the store.
+        if (is_float($value) && is_finite($value) && floor($value) === $value && abs($value) <= PHP_INT_MAX) {
+            return (int) $value;
         }
 
         if (is_string($value) && $this->isIntegerString($value)) {
@@ -112,18 +142,38 @@ enum AttributeType: string
 
     private function encodeFloat(mixed $value): string
     {
-        if (is_int($value) || is_float($value)) {
-            return (string) (float) $value;
-        }
+        if (is_int($value) || is_float($value) || (is_string($value) && is_numeric($value))) {
+            $float = (float) $value;
 
-        if (is_string($value) && is_numeric($value)) {
-            return (string) (float) $value;
+            if (is_finite($float)) {
+                return $this->shortestFloat($float);
+            }
         }
 
         throw InvalidAttributeValueException::forName(
             $this->value,
-            'expected a numeric value',
+            'expected a finite numeric value',
         );
+    }
+
+    /**
+     * The shortest decimal form that reads back as exactly `$value`.
+     *
+     * `(string) $float` keeps only `precision` (14) significant digits and so
+     * silently rounds; 17 always round-trip. `%H` is `%G` with a locale-independent
+     * decimal point.
+     */
+    private function shortestFloat(float $value): string
+    {
+        foreach ([15, 16] as $precision) {
+            $candidate = sprintf('%.'.$precision.'H', $value);
+
+            if ((float) $candidate === $value) {
+                return $candidate;
+            }
+        }
+
+        return sprintf('%.17H', $value);
     }
 
     private function encodeArray(mixed $value): string
@@ -150,11 +200,15 @@ enum AttributeType: string
     private function encodeDateTime(mixed $value): string
     {
         if ($value instanceof DateTimeInterface) {
-            return Carbon::instance($value)->toIso8601String();
+            return CarbonImmutable::instance($value)->utc()->toIso8601String();
         }
 
         if (is_string($value)) {
-            return Carbon::parse($value)->toIso8601String();
+            try {
+                return CarbonImmutable::parse($value)->utc()->toIso8601String();
+            } catch (InvalidFormatException) {
+                // Reported below as the package's own exception.
+            }
         }
 
         throw InvalidAttributeValueException::forName(
