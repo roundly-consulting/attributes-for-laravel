@@ -7,11 +7,13 @@ namespace RoundlyConsulting\Attributes\Traits;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
+use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use RoundlyConsulting\Attributes\AttributesManager;
 use RoundlyConsulting\Attributes\Builders\AttributeWriter;
 use RoundlyConsulting\Attributes\Contracts\HasAttributes as HasAttributesContract;
+use RoundlyConsulting\Attributes\DataTransferObjects\StoredValue;
 use RoundlyConsulting\Attributes\Exceptions\MissingRequiredAttributeException;
 use RoundlyConsulting\Attributes\Models\Attribute;
 use RoundlyConsulting\Attributes\Models\AttributeRevision;
@@ -19,6 +21,7 @@ use RoundlyConsulting\Attributes\Registry\AttributeRegistry;
 use RoundlyConsulting\Attributes\Support\AttributeModel;
 use RoundlyConsulting\Attributes\Support\AttributeValueCaster;
 use RoundlyConsulting\Attributes\Support\StoredAttributeValue;
+use RoundlyConsulting\Attributes\Support\TypedValueQuery;
 
 /**
  * Every write delegates to `Attributes::for($this)` (the AttributesManager), so
@@ -288,55 +291,86 @@ trait HasAttributes
     }
 
     /**
+     * Filter owners whose attribute equals the value — a typed comparison: the
+     * value is taken in the name's defined type (else its own), integers and
+     * floats match each other, and other types match only themselves.
+     *
      * @param  Builder<Model>  $query
      */
     public function scopeWhereAttribute(Builder $query, string $name, mixed $value): void
     {
-        $stored = new AttributeValueCaster()->toStorage($value)->value;
+        $needle = TypedValueQuery::needle($query->getModel(), $name, $value);
 
-        $query->whereHas('attachedAttributes', function (Builder $sub) use ($name, $stored): void {
+        $query->whereHas('attachedAttributes', function (Builder $sub) use ($name, $needle): void {
             /** @var Builder<Attribute> $sub */
-            $sub->where('name', $name)->where('value', $stored);
+            $sub->where($sub->qualifyColumn('name'), $name);
+
+            TypedValueQuery::whereEquals($sub, $needle);
         });
     }
 
     /**
+     * Filter owners whose attribute equals any of the values (typed, as
+     * {@see scopeWhereAttribute()}; a `null` in the list matches a stored null).
+     *
      * @param  Builder<Model>  $query
      * @param  list<mixed>  $values
      */
     public function scopeWhereAttributeIn(Builder $query, string $name, array $values): void
     {
-        $caster = new AttributeValueCaster;
+        $owner = $query->getModel();
 
-        $stored = array_map(
-            static fn (mixed $value): ?string => $caster->toStorage($value)->value,
+        $needles = array_map(
+            static fn (mixed $value): StoredValue => TypedValueQuery::needle($owner, $name, $value),
             $values,
         );
 
-        $query->whereHas('attachedAttributes', function (Builder $sub) use ($name, $stored): void {
+        $query->whereHas('attachedAttributes', function (Builder $sub) use ($name, $needles): void {
             /** @var Builder<Attribute> $sub */
-            $sub->where('name', $name)->whereIn('value', $stored);
+            $sub->where($sub->qualifyColumn('name'), $name);
+
+            if ($needles === []) {
+                $sub->whereIn($sub->qualifyColumn('value'), []);
+
+                return;
+            }
+
+            $sub->where(function (Builder $any) use ($needles): void {
+                foreach ($needles as $needle) {
+                    $any->orWhere(static function (Builder $one) use ($needle): void {
+                        /** @var Builder<Attribute> $one */
+                        TypedValueQuery::whereEquals($one, $needle);
+                    });
+                }
+            });
         });
     }
 
     /**
      * Filter owners whose attribute value falls within the (inclusive) bounds.
      *
-     * Bounds are cast to their storage string and compared. Reliable for
-     * ISO-8601 datetimes and strings; integer ranges are zero-pad-sensitive.
+     * Numeric bounds (in the name's defined type, else their own) compare
+     * numerically against integer and float values; any other bounds compare as
+     * storage text — chronological for datetimes, which are stored in UTC.
      *
      * @param  Builder<Model>  $query
      */
     public function scopeWhereAttributeBetween(Builder $query, string $name, mixed $min, mixed $max): void
     {
-        $caster = new AttributeValueCaster;
-
-        $low = $caster->toStorage($min)->value;
-        $high = $caster->toStorage($max)->value;
+        $low = TypedValueQuery::needle($query->getModel(), $name, $min);
+        $high = TypedValueQuery::needle($query->getModel(), $name, $max);
 
         $query->whereHas('attachedAttributes', function (Builder $sub) use ($name, $low, $high): void {
             /** @var Builder<Attribute> $sub */
-            $sub->where('name', $name)->whereBetween('value', [$low, $high]);
+            $sub->where($sub->qualifyColumn('name'), $name);
+
+            if ($low->value !== null && $high->value !== null && $low->type->isNumeric() && $high->type->isNumeric()) {
+                TypedValueQuery::whereNumericBetween($sub, $low->value, $high->value);
+
+                return;
+            }
+
+            $sub->whereBetween($sub->qualifyColumn('value'), [$low->value, $high->value]);
         });
     }
 
@@ -389,6 +423,10 @@ trait HasAttributes
     }
 
     /**
+     * Order owners by an attribute: integer and float values sort numerically,
+     * every other type by its storage text (chronological for datetimes).
+     * Encrypted values have no meaningful order.
+     *
      * @param  Builder<Model>  $query
      */
     public function scopeOrderByAttribute(Builder $query, string $name, string $direction = 'asc'): void
@@ -398,8 +436,7 @@ trait HasAttributes
         $related = new $model;
         $table = $related->getTable();
 
-        $subQuery = $related->newQuery()->getQuery()
-            ->select('value')
+        $value = fn (): QueryBuilder => $related->newQuery()->getQuery()
             ->from($table)
             ->whereColumn($table.'.owner_id', $query->getModel()->getQualifiedKeyName())
             ->where($table.'.owner_type', $query->getModel()->getMorphClass())
@@ -407,7 +444,12 @@ trait HasAttributes
             ->whereNull($table.'.deleted_at')
             ->limit(1);
 
-        $query->orderBy($subQuery, $this->orderDirection($direction));
+        $numeric = $value();
+        $numeric->select(TypedValueQuery::numeric($numeric, $table));
+
+        $query
+            ->orderBy($numeric, $this->orderDirection($direction))
+            ->orderBy($value()->select($table.'.value'), $this->orderDirection($direction));
     }
 
     /**
