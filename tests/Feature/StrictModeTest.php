@@ -7,6 +7,7 @@ use RoundlyConsulting\Attributes\Facades\Attributes;
 use RoundlyConsulting\Attributes\Tests\Models\DefinedProduct;
 use RoundlyConsulting\Attributes\Tests\Models\MethodProduct;
 use RoundlyConsulting\Attributes\Tests\Models\Product;
+use RoundlyConsulting\PackageToolkit\Exceptions\InvalidConfigurationException;
 
 beforeEach(function (): void {
     config(['attributes.strict' => true]);
@@ -75,3 +76,10 @@ it('accepts sync() and setMany() for model-declared attributes in strict mode', 
 
     expect($product->getAttachedAttributes()->all())->toBe(['sku' => 'B']);
 });
+
+it('throws on a typo in the switches instead of reading them as off (strict config)', function (string $key): void {
+    config(['attributes.strict' => false, $key => 'disabled']);
+
+    expect(fn () => Product::query()->create()->attachAttribute('color', 'white'))
+        ->toThrow(InvalidConfigurationException::class, "Configuration value [{$key}] must be a boolean (true/false, 1/0, on/off or yes/no), [disabled] given.");
+})->with(['attributes.strict', 'attributes.history.enabled']);
