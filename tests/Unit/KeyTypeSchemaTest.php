@@ -5,7 +5,7 @@ declare(strict_types=1);
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
-use RoundlyConsulting\PackageToolkit\Enums\DatabaseDriver;
+use RoundlyConsulting\PackageToolkit\Exceptions\InvalidConfigurationException;
 use RoundlyConsulting\Testing\Database\DriverMatrix;
 
 function runAttributesMigration(string $file): void
@@ -103,16 +103,17 @@ it('renders each configured key type as a distinct real column type', function (
     'ulid' => ['ulid', 'character(26)'],
 ])->skip($pgsqlOnly, 'needs the postgres catalog to tell the key types apart');
 
-it('falls back to the bigint schema for an unrecognized key type', function (): void {
+it('refuses to migrate on an unrecognized key type instead of falling back to bigint', function (): void {
     config()->set('attributes.key_type', 'nonsense');
     config()->set('attributes.table', 'fallback_attributes');
 
     Schema::dropIfExists('fallback_attributes');
-    runAttributesMigration('create_attributes_table.php');
 
-    expect(Schema::hasColumn('fallback_attributes', 'owner_id'))->toBeTrue()
-        ->and(DatabaseDriver::current()->isPgsql() ? attributesPgColumn('fallback_attributes', 'owner_id')['type'] : 'bigint')
-        ->toBe('bigint');
+    // A typo in a host's config must stop the migration, never silently build bigint
+    // columns for a uuid/ulid-keyed host.
+    expect(function (): void {
+        runAttributesMigration('create_attributes_table.php');
+    })->toThrow(InvalidConfigurationException::class, 'Configuration value [attributes.key_type] must be one of [bigint, uuid, ulid] (case-insensitive), [nonsense] given.');
 
     Schema::dropIfExists('fallback_attributes');
 });
