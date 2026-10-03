@@ -27,10 +27,14 @@ it('attaches through the configured host model', function (): void {
     expect($product->attachedAttributes()->first())->toBeInstanceOf(CustomAttribute::class);
 });
 
-it('falls back to the packaged model when the configured model is not an attribute', function (): void {
+it('refuses a foreign model instead of falling back to the packaged one', function (): void {
+    // The toolkit refuses any class that is not the packaged model or a subclass of it.
     config()->set('attributes.model', Product::class);
 
-    expect(AttributeModel::class())->toBe(Attribute::class);
+    expect(fn (): string => AttributeModel::class())->toThrow(
+        InvalidConfigurationException::class,
+        'Configuration value [attributes.model] must be a class-string of ['.Attribute::class.'], ['.Product::class.'] given.',
+    );
 });
 
 it('rejects a configured value that is not an eloquent model', function (): void {
