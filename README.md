@@ -87,17 +87,18 @@ return [
 | Key | Type | Default | Env | Purpose |
 |-----|------|---------|-----|---------|
 | `model` | `class-string` | `RoundlyConsulting\Attributes\Models\Attribute` | — | Model used to persist attributes. Point it at a subclass to override casts/scopes. |
-| `table` | `string` | `attributes` | — | Table name used by the migration and model. A blank or non-string value throws. |
+| `table` | `string` | `attributes` | — | Table name used by the migration and model. A blank value is not set and uses the default; a non-string value throws. |
 | `key_type` | `string` | `bigint` | `ATTRIBUTES_KEY_TYPE` | Key type of the polymorphic `owner_id` column both migrations create: `bigint`, `uuid` or `ulid` (case-insensitive; anything else throws `InvalidConfigurationException` when the migrations run). Set it before you migrate; every owner model must share it. |
 | `strict` | `bool` | `false` | `ATTRIBUTES_STRICT` | When `true`, writing an attribute that has neither a global definition nor one in the owner model's own schema throws `UnknownAttributeException`. |
-| `prune_after_days` | `int` | `30` | `ATTRIBUTES_PRUNE_AFTER_DAYS` | Default age (days) for `attributes:prune`. A whole number, `0` or more (`0` purges every trashed attribute); anything else throws. |
+| `prune_after_days` | `int` | `30` | `ATTRIBUTES_PRUNE_AFTER_DAYS` | Default age (days) for `attributes:prune`. A whole number, `0` or more (`0` purges every trashed attribute); blank (`ATTRIBUTES_PRUNE_AFTER_DAYS=`) is not set and gives `30`; anything else throws. |
 | `history.enabled` | `bool` | `false` | `ATTRIBUTES_HISTORY` | When `true`, records an old→new revision on every attach/sync/detach/meta change. |
-| `history.table` | `string` | `attribute_revisions` | — | Table name for the audit trail. A blank or non-string value throws. |
+| `history.table` | `string` | `attribute_revisions` | — | Table name for the audit trail. A blank value is not set and uses the default; a non-string value throws. |
 | `definitions` | `array` | `[]` | — | Registry seed. Each entry is an array supporting `type`, `rules`, `required`, `default`, `unique`, `encrypted`. |
 
 The boolean env values accept `true`/`false`, `1`/`0`, `on`/`off` and `yes`/`no`. Every setting is
-read strictly: an unset key takes its default, and a present but invalid value throws
-`InvalidConfigurationException` naming the key — it never falls back silently.
+read strictly: a key that is not set — absent, `null` or blank (a host's `KEY=`) — takes its
+default, and any other invalid value throws `InvalidConfigurationException` naming the key — it
+never falls back silently.
 
 Each definition entry accepts:
 
@@ -107,7 +108,7 @@ Each definition entry accepts:
 | `rules` | `array` | Extra Laravel validation rules applied on attach. Must be an array (`['min:1', 'max:5']`); a pipe string throws. |
 | `required` | `bool` | Enforced by `$model->validateAttributes()`. Read like the boolean env values; anything else throws. |
 | `default` | `mixed` | Returned by reads when the attribute is not attached. |
-| `unique` | `string`/`bool` | `'owner'` (per owner type), `'global'` (across every owner), `true` (= owner) or `false`/`'none'`; anything else throws instead of switching uniqueness off. Backed by a database unique index — encrypted values included. |
+| `unique` | `string`/`bool` | `'owner'` (per owner type), `'global'` (across every owner), `true` (= owner) or `false`/`'none'` (unset or blank also means none); anything else throws instead of switching uniqueness off. Backed by a database unique index — encrypted values included. |
 | `encrypted` | `bool` | Stores the value as ciphertext via `Crypt` at rest. Read like the boolean env values; anything else throws. |
 
 ## Usage
