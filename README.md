@@ -87,26 +87,28 @@ return [
 | Key | Type | Default | Env | Purpose |
 |-----|------|---------|-----|---------|
 | `model` | `class-string` | `RoundlyConsulting\Attributes\Models\Attribute` | — | Model used to persist attributes. Point it at a subclass to override casts/scopes. |
-| `table` | `string` | `attributes` | — | Table name used by the migration and model. |
+| `table` | `string` | `attributes` | — | Table name used by the migration and model. A blank or non-string value throws. |
 | `key_type` | `string` | `bigint` | `ATTRIBUTES_KEY_TYPE` | Key type of the polymorphic `owner_id` column both migrations create: `bigint`, `uuid` or `ulid` (case-insensitive; anything else throws `InvalidConfigurationException` when the migrations run). Set it before you migrate; every owner model must share it. |
 | `strict` | `bool` | `false` | `ATTRIBUTES_STRICT` | When `true`, writing an attribute that has neither a global definition nor one in the owner model's own schema throws `UnknownAttributeException`. |
-| `prune_after_days` | `int` | `30` | `ATTRIBUTES_PRUNE_AFTER_DAYS` | Default age (days) for `attributes:prune`. |
+| `prune_after_days` | `int` | `30` | `ATTRIBUTES_PRUNE_AFTER_DAYS` | Default age (days) for `attributes:prune`. A whole number, `0` or more (`0` purges every trashed attribute); anything else throws. |
 | `history.enabled` | `bool` | `false` | `ATTRIBUTES_HISTORY` | When `true`, records an old→new revision on every attach/sync/detach/meta change. |
-| `history.table` | `string` | `attribute_revisions` | — | Table name for the audit trail. |
-| `definitions` | `array` | `[]` | — | Registry seed. Each entry supports `type`, `rules`, `required`, `default`, `unique`, `encrypted`. |
+| `history.table` | `string` | `attribute_revisions` | — | Table name for the audit trail. A blank or non-string value throws. |
+| `definitions` | `array` | `[]` | — | Registry seed. Each entry is an array supporting `type`, `rules`, `required`, `default`, `unique`, `encrypted`. |
 
-The boolean env values accept `true`/`false`, `1`/`0`, `on`/`off` and `yes`/`no`.
+The boolean env values accept `true`/`false`, `1`/`0`, `on`/`off` and `yes`/`no`. Every setting is
+read strictly: an unset key takes its default, and a present but invalid value throws
+`InvalidConfigurationException` naming the key — it never falls back silently.
 
 Each definition entry accepts:
 
 | Definition key | Type | Purpose |
 |----------------|------|---------|
-| `type` | `string` | One of `AttributeType`: `string`, `integer`, `float`, `boolean`, `array`, `datetime`. Values are validated against it **and stored in it** — a request string `'5'` under an `integer` definition is stored and read back as `5`. |
-| `rules` | `array` | Extra Laravel validation rules applied on attach. |
-| `required` | `bool` | Enforced by `$model->validateAttributes()`. |
+| `type` | `string` | One of `AttributeType`: `string`, `integer`, `float`, `boolean`, `array`, `datetime` (or the enum case); unset means `string`, anything else throws. Values are validated against it **and stored in it** — a request string `'5'` under an `integer` definition is stored and read back as `5`. |
+| `rules` | `array` | Extra Laravel validation rules applied on attach. Must be an array (`['min:1', 'max:5']`); a pipe string throws. |
+| `required` | `bool` | Enforced by `$model->validateAttributes()`. Read like the boolean env values; anything else throws. |
 | `default` | `mixed` | Returned by reads when the attribute is not attached. |
-| `unique` | `string`/`bool` | `'owner'` (per owner type), `'global'` (across every owner), `true` (= owner) or `false`/`'none'`. Backed by a database unique index — encrypted values included. |
-| `encrypted` | `bool` | Stores the value as ciphertext via `Crypt` at rest. |
+| `unique` | `string`/`bool` | `'owner'` (per owner type), `'global'` (across every owner), `true` (= owner) or `false`/`'none'`; anything else throws instead of switching uniqueness off. Backed by a database unique index — encrypted values included. |
+| `encrypted` | `bool` | Stores the value as ciphertext via `Crypt` at rest. Read like the boolean env values; anything else throws. |
 
 ## Usage
 
@@ -402,8 +404,10 @@ You can also seed definitions through the `definitions` config key.
 ### Per-model schemas
 
 A model can declare its own definitions, merged over the global config for that model only (strict
-mode, validation, type, encryption, uniqueness and defaults all honour them). Declare either a
-public `attributeDefinitions()` method or a `$attributeDefinitions` property:
+mode, validation, type, encryption, uniqueness and defaults all honour them). They are parsed
+exactly like the config entries, so a non-array entry or a typo'd key throws naming
+`App\Models\Product::attributeDefinitions.<name>.<key>`. Declare either a public
+`attributeDefinitions()` method or a `$attributeDefinitions` property:
 
 ```php
 class Product extends Model implements HasAttributesContract
@@ -525,7 +529,8 @@ php artisan attributes:prune --days=30 --force
 ```
 
 The prune command asks before deleting and then runs `Attributes::prune($days)`, which you can
-also schedule directly.
+also schedule directly. `--days` must be a whole number (`0` or more); anything else fails the
+command instead of being read as `0` and purging every trashed attribute.
 
 ### Testing helper
 
