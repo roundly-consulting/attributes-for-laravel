@@ -11,12 +11,14 @@ use RoundlyConsulting\Attributes\Models\Attribute;
 use RoundlyConsulting\Attributes\Models\AttributeRevision;
 use RoundlyConsulting\Attributes\Registry\AttributeRegistry;
 use RoundlyConsulting\Attributes\Registry\DefinitionFactory;
+use RoundlyConsulting\Attributes\Support\AttributesConfig;
 use RoundlyConsulting\PackageToolkit\Exceptions\InvalidConfigurationException;
 
 /**
  * A typo in the host's attributes config fails loudly. Before: a non-number
- * `prune_after_days` became 30, a blank table name became `attributes`, a typo'd
- * definition `type` became `string`, and a typo'd `unique` silently switched uniqueness off.
+ * `prune_after_days` became 30, a typo'd definition `type` became `string`, and a typo'd
+ * `unique` silently switched uniqueness off. A blank value (a host's `KEY=`) is not set
+ * and takes the default.
  */
 function bootAttributesProvider(): void
 {
@@ -31,7 +33,7 @@ it('refuses a junk or negative prune age (strict config)', function (mixed $days
 
     expect(fn () => app(PruneAttributesAction::class)->execute())
         ->toThrow(InvalidConfigurationException::class, 'attributes.prune_after_days');
-})->with(['word' => 'thirty', 'decimal' => '7.5', 'blank' => '', 'negative' => '-1', 'bool' => true]);
+})->with(['word' => 'thirty', 'decimal' => '7.5', 'negative' => '-1', 'bool' => true]);
 
 it('reads a canonical prune age string and defaults an absent one (strict config)', function (): void {
     config()->set('attributes.prune_after_days', ' 7 ');
@@ -40,6 +42,13 @@ it('reads a canonical prune age string and defaults an absent one (strict config
     config()->set('attributes.prune_after_days', null);
     expect(app(PruneAttributesAction::class)->execute())->toBe(0);
 });
+
+it('reads a blank prune age as not set, taking the default (strict config)', function (string $blank): void {
+    config()->set('attributes.prune_after_days', $blank);
+
+    expect(AttributesConfig::pruneAfterDays())->toBe(30)
+        ->and(app(PruneAttributesAction::class)->execute())->toBe(0);
+})->with(['empty' => '', 'whitespace' => '  ']);
 
 it('fails the prune command on a junk configured age (strict config)', function (): void {
     config()->set('attributes.prune_after_days', 'thirty');
@@ -54,24 +63,23 @@ it('refuses a junk --days option instead of purging every trashed attribute (str
         ->assertFailed();
 })->with(['thirty', '7.5', '-1', '']);
 
-it('refuses a blank or non-string table name (strict config)', function (string $key, mixed $value, Closure $read): void {
+it('refuses a non-string table name (strict config)', function (string $key, mixed $value, Closure $read): void {
     config()->set($key, $value);
 
     expect($read)->toThrow(InvalidConfigurationException::class, $key);
 })->with([
-    'blank table' => ['attributes.table', '', fn () => (new Attribute)->getTable()],
     'int table' => ['attributes.table', 5, fn () => (new Attribute)->getTable()],
-    'blank history table' => ['attributes.history.table', ' ', fn () => (new AttributeRevision)->getTable()],
+    'bool table' => ['attributes.table', false, fn () => (new Attribute)->getTable()],
     'array history table' => ['attributes.history.table', ['revisions'], fn () => (new AttributeRevision)->getTable()],
 ]);
 
-it('defaults absent table names (strict config)', function (): void {
-    config()->set('attributes.table', null);
-    config()->set('attributes.history.table', null);
+it('defaults absent or blank table names (strict config)', function (?string $unset): void {
+    config()->set('attributes.table', $unset);
+    config()->set('attributes.history.table', $unset);
 
     expect((new Attribute)->getTable())->toBe('attributes')
         ->and((new AttributeRevision)->getTable())->toBe('attribute_revisions');
-});
+})->with(['absent' => null, 'empty' => '', 'whitespace' => ' ']);
 
 it('refuses a typo in a definition type instead of storing it as a string (strict config)', function (): void {
     config()->set('attributes.definitions', ['rating' => ['type' => 'integr']]);
@@ -83,7 +91,7 @@ it('refuses a typo in a definition type instead of storing it as a string (stric
 it('refuses a typo in a definition unique scope instead of switching uniqueness off (strict config)', function (mixed $unique): void {
     expect(fn () => DefinitionFactory::fromArray('sku', ['unique' => $unique]))
         ->toThrow(InvalidConfigurationException::class, 'attributes.definitions.sku.unique');
-})->with(['globl', 'Global', '', 42]);
+})->with(['globl', 'Global', 42]);
 
 it('refuses non-array rules instead of dropping them (strict config)', function (): void {
     expect(fn () => DefinitionFactory::fromArray('rating', ['rules' => 'min:1|max:5']))
@@ -106,7 +114,9 @@ it('still accepts every valid definition spelling (strict config)', function ():
     expect($definition->type)->toBe(AttributeType::Integer)
         ->and($definition->unique)->toBe(UniqueScope::Global_)
         ->and(DefinitionFactory::fromArray('sku', ['unique' => false])->unique)->toBe(UniqueScope::None)
-        ->and(DefinitionFactory::fromArray('sku', ['unique' => null])->unique)->toBe(UniqueScope::None);
+        ->and(DefinitionFactory::fromArray('sku', ['unique' => null])->unique)->toBe(UniqueScope::None)
+        ->and(DefinitionFactory::fromArray('sku', ['unique' => ''])->unique)->toBe(UniqueScope::None)
+        ->and(DefinitionFactory::fromArray('sku', ['type' => ' '])->type)->toBe(AttributeType::String_);
 });
 
 it('refuses a definitions entry that is not an array (strict config)', function (): void {

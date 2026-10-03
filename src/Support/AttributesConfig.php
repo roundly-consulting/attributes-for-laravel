@@ -8,9 +8,10 @@ use RoundlyConsulting\PackageToolkit\Exceptions\InvalidConfigurationException;
 use RoundlyConsulting\PackageToolkit\Support\Config;
 
 /**
- * Strict reads of the host's non-boolean attributes settings. An absent (null) key takes
- * the default; a present but invalid value throws {@see InvalidConfigurationException}
- * naming the key, so a typo never silently becomes a different setting.
+ * Strict reads of the host's non-boolean attributes settings. A key that is not set
+ * (absent, null or blank — a host's `KEY=`) takes the default; any other invalid value
+ * throws {@see InvalidConfigurationException} naming the key, so a typo never silently
+ * becomes a different setting.
  *
  * @internal
  */
@@ -18,8 +19,8 @@ final class AttributesConfig
 {
     /**
      * How many days a trashed attribute is kept before `attributes:prune` removes it. `0`
-     * is allowed and purges every trashed attribute; junk (`thirty`, `7.5`, `''`) and
-     * negatives throw — they used to fall back to 30.
+     * is allowed and purges every trashed attribute; blank is not set and gives 30; junk
+     * (`thirty`, `7.5`) and negatives throw.
      */
     public static function pruneAfterDays(): int
     {
@@ -37,15 +38,16 @@ final class AttributesConfig
     }
 
     /**
-     * A string setting the caller read: the default when null, otherwise a non-empty string.
+     * A string setting the caller read: the default when not set (null, `''` or
+     * whitespace), otherwise it must be a string.
      */
     public static function string(string $key, mixed $value, string $default): string
     {
-        if ($value === null) {
+        if ($value === null || (is_string($value) && trim($value) === '')) {
             return $default;
         }
 
-        if (! is_string($value) || trim($value) === '') {
+        if (! is_string($value)) {
             throw InvalidConfigurationException::notAString($key, $value);
         }
 
