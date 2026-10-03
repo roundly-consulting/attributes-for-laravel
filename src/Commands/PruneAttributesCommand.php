@@ -8,6 +8,7 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
 use RoundlyConsulting\Attributes\AttributesManager;
 use RoundlyConsulting\Attributes\Support\AttributeModel;
+use RoundlyConsulting\Attributes\Support\AttributesConfig;
 
 final class PruneAttributesCommand extends Command
 {
@@ -18,6 +19,12 @@ final class PruneAttributesCommand extends Command
     public function handle(AttributesManager $attributes): int
     {
         $days = $this->resolveDays();
+
+        if ($days === null) {
+            $this->error('--days must be a whole number of days (0 or more).');
+
+            return self::FAILURE;
+        }
 
         $cutoff = Carbon::now()->subDays($days);
 
@@ -46,16 +53,22 @@ final class PruneAttributesCommand extends Command
         return self::SUCCESS;
     }
 
-    private function resolveDays(): int
+    /**
+     * The `--days` option, or the configured age. A junk option is null — never `(int)`
+     * cast to 0, which would purge every trashed attribute.
+     */
+    private function resolveDays(): ?int
     {
         $option = $this->option('days');
 
-        if ($option !== null) {
-            return (int) $option;
+        if ($option === null) {
+            return AttributesConfig::pruneAfterDays();
         }
 
-        $configured = config('attributes.prune_after_days', 30);
-
-        return is_numeric($configured) ? (int) $configured : 30;
+        return match (true) {
+            is_int($option) => $option >= 0 ? $option : null,
+            is_string($option) && preg_match('/^\s*\d+\s*$/', $option) === 1 => (int) $option,
+            default => null,
+        };
     }
 }

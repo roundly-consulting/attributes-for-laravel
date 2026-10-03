@@ -5,6 +5,7 @@ declare(strict_types=1);
 use RoundlyConsulting\Attributes\Enums\AttributeType;
 use RoundlyConsulting\Attributes\Enums\UniqueScope;
 use RoundlyConsulting\Attributes\Registry\DefinitionFactory;
+use RoundlyConsulting\PackageToolkit\Exceptions\InvalidConfigurationException;
 
 it('parses every definition key', function (): void {
     $definition = DefinitionFactory::fromArray('rating', [
@@ -36,14 +37,11 @@ it('applies sensible defaults for a minimal definition', function (): void {
         ->and($definition->encrypted)->toBeFalse();
 });
 
-it('falls back to string for an unknown type and ignores bad rules', function (): void {
-    $definition = DefinitionFactory::fromArray('weird', [
-        'type' => 'nope',
-        'rules' => 'not-an-array',
-    ]);
-
-    expect($definition->type)->toBe(AttributeType::String_)
-        ->and($definition->rules)->toBe([]);
+it('throws for an unknown type or non-array rules (strict config)', function (): void {
+    expect(fn () => DefinitionFactory::fromArray('weird', ['type' => 'nope']))
+        ->toThrow(InvalidConfigurationException::class, 'attributes.definitions.weird.type')
+        ->and(fn () => DefinitionFactory::fromArray('weird', ['rules' => 'not-an-array']))
+        ->toThrow(InvalidConfigurationException::class, 'attributes.definitions.weird.rules');
 });
 
 it('maps a boolean unique flag to owner scope', function (): void {

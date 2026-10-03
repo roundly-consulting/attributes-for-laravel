@@ -9,7 +9,9 @@ use RoundlyConsulting\Attributes\Commands\PruneAttributesCommand;
 use RoundlyConsulting\Attributes\Registry\AttributeRegistry;
 use RoundlyConsulting\Attributes\Registry\DefinitionFactory;
 use RoundlyConsulting\Attributes\Support\AttributeModel;
+use RoundlyConsulting\Attributes\Support\AttributesConfig;
 use RoundlyConsulting\PackageToolkit\Concerns\RegistersBlueprintMacros;
+use RoundlyConsulting\PackageToolkit\Exceptions\InvalidConfigurationException;
 use RoundlyConsulting\PackageToolkit\Package;
 use RoundlyConsulting\PackageToolkit\PackageServiceProvider;
 use RoundlyConsulting\PackageToolkit\Support\Config;
@@ -62,35 +64,34 @@ final class AttributesServiceProvider extends PackageServiceProvider
 
     private function hydrateRegistry(): void
     {
-        $definitions = config('attributes.definitions', []);
+        $definitions = config('attributes.definitions') ?? [];
 
-        if (! is_array($definitions) || $definitions === []) {
+        if (! is_array($definitions)) {
+            throw new InvalidConfigurationException(sprintf(
+                'Configuration value [attributes.definitions] must be an array of definitions, [%s] given.',
+                get_debug_type($definitions),
+            ));
+        }
+
+        if ($definitions === []) {
             return;
         }
 
         $registry = $this->app->make(AttributeRegistry::class);
 
         foreach ($definitions as $name => $definition) {
-            if (! is_array($definition)) {
-                continue;
-            }
-
-            $registry->define(DefinitionFactory::fromArray((string) $name, $definition));
+            $registry->define(DefinitionFactory::fromRaw((string) $name, $definition));
         }
     }
 
     private static function table(): string
     {
-        $table = config('attributes.table', 'attributes');
-
-        return is_string($table) && $table !== '' ? $table : 'attributes';
+        return AttributesConfig::table();
     }
 
     private static function pruneAfterDays(): string
     {
-        $days = config('attributes.prune_after_days', 30);
-
-        return (string) (is_numeric($days) ? (int) $days : 30);
+        return (string) AttributesConfig::pruneAfterDays();
     }
 
     private static function definitions(): string
@@ -101,10 +102,12 @@ final class AttributesServiceProvider extends PackageServiceProvider
             return 'FREE-FORM';
         }
 
+        // Parsed the way the registry parses them, so an `'encrypted' => 'on'` counts here
+        // too, and a broken definition fails `about` as it fails boot.
         $encrypted = 0;
 
-        foreach ($definitions as $definition) {
-            if (is_array($definition) && ($definition['encrypted'] ?? false) === true) {
+        foreach ($definitions as $name => $definition) {
+            if (DefinitionFactory::fromRaw((string) $name, $definition)->encrypted) {
                 $encrypted++;
             }
         }

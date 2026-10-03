@@ -16,6 +16,7 @@ use RoundlyConsulting\Attributes\Database\Factories\AttributeFactory;
 use RoundlyConsulting\Attributes\Enums\AttributeType;
 use RoundlyConsulting\Attributes\Support\AttributeCollection;
 use RoundlyConsulting\Attributes\Support\AttributeModel;
+use RoundlyConsulting\Attributes\Support\AttributesConfig;
 
 /**
  * @property int $id
@@ -58,9 +59,7 @@ class Attribute extends Model
             return $this->table;
         }
 
-        $table = config('attributes.table', 'attributes');
-
-        return is_string($table) ? $table : 'attributes';
+        return AttributesConfig::table();
     }
 
     /**

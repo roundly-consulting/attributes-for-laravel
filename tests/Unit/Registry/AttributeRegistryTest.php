@@ -13,6 +13,7 @@ use RoundlyConsulting\Attributes\Tests\Models\DefinedProduct;
 use RoundlyConsulting\Attributes\Tests\Models\MalformedDefProduct;
 use RoundlyConsulting\Attributes\Tests\Models\MethodProduct;
 use RoundlyConsulting\Attributes\Tests\Models\Product;
+use RoundlyConsulting\PackageToolkit\Exceptions\InvalidConfigurationException;
 
 beforeEach(function (): void {
     $this->registry = new AttributeRegistry;
@@ -116,23 +117,18 @@ it('loads definitions from config via the provider', function (): void {
         ->and($registry->get('rating')?->required)->toBeTrue();
 });
 
-it('skips malformed config entries and defaults bad types to string', function (): void {
-    config()->set('attributes.definitions', [
-        'good' => ['type' => 'unknown-type'],
-        'bad' => 'not-an-array',
-    ]);
+it('throws on a malformed config entry or a typoed type at boot (strict config)', function (array $definitions, string $key): void {
+    config()->set('attributes.definitions', $definitions);
 
     app()->forgetInstance(AttributeRegistry::class);
     $provider = new AttributesServiceProvider(app());
     $provider->register();
-    $provider->boot();
 
-    $registry = app(AttributeRegistry::class);
-
-    expect($registry->has('good'))->toBeTrue()
-        ->and($registry->get('good')?->type)->toBe(AttributeType::String_)
-        ->and($registry->has('bad'))->toBeFalse();
-});
+    expect(fn () => $provider->boot())->toThrow(InvalidConfigurationException::class, $key);
+})->with([
+    'unknown type' => [['good' => ['type' => 'unknown-type']], 'attributes.definitions.good.type'],
+    'not an array' => [['bad' => 'not-an-array'], 'attributes.definitions.bad'],
+]);
 
 it('reports required names from definitions', function (): void {
     $this->registry->defineMany(
@@ -207,13 +203,11 @@ it('names the failing key in validation messages', function (): void {
     $this->fail('Expected InvalidAttributeValueException.');
 });
 
-it('skips non-array model definition entries', function (): void {
+it('throws on a malformed model definition entry (strict config)', function (): void {
     $owner = MalformedDefProduct::query()->create();
 
-    $merged = $this->registry->definitionsFor($owner);
-
-    expect($merged)->toHaveKey('good')
-        ->and($merged)->not->toHaveKey('bad');
+    expect(fn () => $this->registry->definitionsFor($owner))
+        ->toThrow(InvalidConfigurationException::class, MalformedDefProduct::class.'::attributeDefinitions.bad');
 });
 
 it('returns an empty set for a model without definitions', function (): void {

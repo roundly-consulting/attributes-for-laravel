@@ -6,6 +6,7 @@ namespace RoundlyConsulting\Attributes\Actions;
 
 use Illuminate\Support\Carbon;
 use RoundlyConsulting\Attributes\Support\AttributeModel;
+use RoundlyConsulting\Attributes\Support\AttributesConfig;
 
 final readonly class PruneAttributesAction
 {
@@ -18,14 +19,7 @@ final readonly class PruneAttributesAction
         $model = AttributeModel::class();
 
         return (int) $model::onlyTrashed()
-            ->where('deleted_at', '<', Carbon::now()->subDays($days ?? self::configuredDays()))
+            ->where('deleted_at', '<', Carbon::now()->subDays($days ?? AttributesConfig::pruneAfterDays()))
             ->forceDelete();
-    }
-
-    private static function configuredDays(): int
-    {
-        $configured = config('attributes.prune_after_days', 30);
-
-        return is_numeric($configured) ? (int) $configured : 30;
     }
 }

@@ -274,11 +274,7 @@ final class AttributeRegistry
         $definitions = [];
 
         foreach ($raw as $name => $definition) {
-            if (! is_array($definition)) {
-                continue;
-            }
-
-            $definitions[(string) $name] = DefinitionFactory::fromArray((string) $name, $definition);
+            $definitions[(string) $name] = DefinitionFactory::fromRaw((string) $name, $definition, $owner::class.'::attributeDefinitions');
         }
 
         return $definitions;

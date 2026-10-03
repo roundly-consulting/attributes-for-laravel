@@ -12,6 +12,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use RoundlyConsulting\Attributes\Database\Factories\AttributeRevisionFactory;
 use RoundlyConsulting\Attributes\Enums\RevisionType;
+use RoundlyConsulting\Attributes\Support\AttributesConfig;
 
 /**
  * @property int $id
@@ -44,9 +45,7 @@ final class AttributeRevision extends Model
             return $this->table;
         }
 
-        $table = config('attributes.history.table', 'attribute_revisions');
-
-        return is_string($table) ? $table : 'attribute_revisions';
+        return AttributesConfig::historyTable();
     }
 
     /**

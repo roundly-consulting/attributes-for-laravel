@@ -206,7 +206,7 @@ it('prunes trashed attributes older than the given or configured age', function 
 
     $this->assertDatabaseMissing('attributes', ['name' => 'old']);
 
-    config()->set('attributes.prune_after_days', 'not-a-number');
+    config()->set('attributes.prune_after_days', null);
 
     expect(Attributes::prune())->toBe(1);
 

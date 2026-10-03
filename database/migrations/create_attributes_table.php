@@ -6,6 +6,7 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 use RoundlyConsulting\Attributes\Enums\AttributeType;
+use RoundlyConsulting\Attributes\Support\AttributesConfig;
 use RoundlyConsulting\PackageToolkit\Enums\KeyType;
 
 return new class extends Migration
@@ -39,8 +40,6 @@ return new class extends Migration
 
     private function table(): string
     {
-        $table = config('attributes.table', 'attributes');
-
-        return is_string($table) ? $table : 'attributes';
+        return AttributesConfig::table();
     }
 };
