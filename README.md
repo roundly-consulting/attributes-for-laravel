@@ -88,7 +88,7 @@ return [
 |-----|------|---------|-----|---------|
 | `model` | `class-string` | `RoundlyConsulting\Attributes\Models\Attribute` | — | Model used to persist attributes. Point it at a subclass to override casts/scopes. |
 | `table` | `string` | `attributes` | — | Table name used by the migration and model. |
-| `key_type` | `string` | `bigint` | `ATTRIBUTES_KEY_TYPE` | Key type of the polymorphic `owner_id` column both migrations create: `bigint`, `uuid` or `ulid` (anything else falls back to `bigint`). Set it before you migrate; every owner model must share it. |
+| `key_type` | `string` | `bigint` | `ATTRIBUTES_KEY_TYPE` | Key type of the polymorphic `owner_id` column both migrations create: `bigint`, `uuid` or `ulid` (case-insensitive; anything else throws `InvalidConfigurationException` when the migrations run). Set it before you migrate; every owner model must share it. |
 | `strict` | `bool` | `false` | `ATTRIBUTES_STRICT` | When `true`, writing an attribute that has neither a global definition nor one in the owner model's own schema throws `UnknownAttributeException`. |
 | `prune_after_days` | `int` | `30` | `ATTRIBUTES_PRUNE_AFTER_DAYS` | Default age (days) for `attributes:prune`. |
 | `history.enabled` | `bool` | `false` | `ATTRIBUTES_HISTORY` | When `true`, records an old→new revision on every attach/sync/detach/meta change. |

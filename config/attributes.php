@@ -38,8 +38,9 @@ return [
     |
     | The key type used for the polymorphic owner column. Use "uuid" or "ulid"
     | when the models attributes attach to use UUID/ULID primary keys, otherwise
-    | leave it as "bigint". Anything unrecognized falls back to "bigint". Your
-    | owner models must share one key type — set this to match.
+    | leave it as "bigint". An unrecognized value throws when the migrations run
+    | rather than falling back. Your owner models must share one key type — set
+    | this to match.
     |
     | Supported: "bigint", "uuid", "ulid"
     |

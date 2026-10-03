@@ -12,8 +12,8 @@ return new class extends Migration
 {
     public function up(): void
     {
-        // Silently falls back to bigint for an unrecognized value, so a typo in
-        // the host's config never leaves the package unable to migrate.
+        // Throws for an unrecognized value, so a typo in the host's config fails
+        // the migration loudly instead of creating the wrong column type.
         $keyType = KeyType::fromConfig('attributes.key_type');
 
         Schema::create($this->table(), function (Blueprint $table) use ($keyType): void {
