@@ -81,3 +81,25 @@ it('uses the configured table name', function (): void {
 
     config()->set('attributes.table', 'attributes');
 });
+
+/**
+ * Chat review C-13: the model documented `@property-read AttributeType $type`, but
+ * `type()` is a method, so Eloquent took `->type` for a relation and threw
+ * LogicException. Every property the docblock promises has to read.
+ */
+it('reads every property its docblock documents', function (): void {
+    $attribute = Attribute::factory()->create(['owner_type' => 'product', 'owner_id' => 1]);
+
+    preg_match_all('/@property(?:-read)?\s+[^$\n]+\$(\w+)/', (string) (new ReflectionClass(Attribute::class))->getDocComment(), $matches);
+
+    expect($matches[1])->toContain('value', 'value_type', 'meta');
+
+    $read = [];
+
+    foreach ($matches[1] as $property) {
+        $attribute->{$property};
+        $read[] = $property;
+    }
+
+    expect($read)->toBe($matches[1]);
+});

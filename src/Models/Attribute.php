@@ -27,11 +27,12 @@ use RoundlyConsulting\Attributes\Support\AttributesConfig;
  * @property string|null $value_type
  * @property bool $is_encrypted
  * @property string|null $unique_hash
- * @property-read AttributeType $type
  * @property Collection<string, mixed>|null $meta
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property Carbon|null $deleted_at
+ *
+ * The resolved value type is the `type()` method, not a property.
  *
  * Not final on purpose: `attributes.model` documents swapping in a host model
  * that extends this one.
