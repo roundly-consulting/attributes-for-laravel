@@ -186,11 +186,13 @@ trait HasAttributes
         return $value === null ? null : (float) $value;
     }
 
+    /**
+     * The value as a boolean — a string parsed as {@see StoredAttributeValue::bool()}
+     * parses it (`'false'` / `'off'` are false).
+     */
     public function attributeBool(string $name): ?bool
     {
-        $value = $this->getAttachedAttributeValue($name);
-
-        return $value === null ? null : (bool) $value;
+        return $this->attr($name)->bool();
     }
 
     /**

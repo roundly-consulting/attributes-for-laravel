@@ -108,3 +108,29 @@ it('reads a stored non-date through attributeDate as null', function (): void {
     expect($product->attributeDate('note'))->toBeNull()
         ->and($product->attributeDate('color'))->toBeNull();
 });
+
+/**
+ * Chat review C-10 (owner: option A): a string read as a boolean used PHP truthiness, so
+ * `'false'` and `'off'` read as true — while the write path and query needles parse them
+ * with FILTER_VALIDATE_BOOLEAN. Reads parse the same way now.
+ */
+it('reads boolean strings the way the write path parses them', function (string $stored, bool $expected): void {
+    $product = Product::query()->create();
+    $product->attachAttribute('flag', $stored);
+
+    expect((new StoredAttributeValue($stored))->bool())->toBe($expected)
+        ->and($product->attr('flag')->bool())->toBe($expected)
+        ->and($product->attributeBool('flag'))->toBe($expected);
+})->with([
+    'false' => ['false', false],
+    'off' => ['off', false],
+    'no' => ['no', false],
+    'zero' => ['0', false],
+    'empty' => ['', false],
+    'FALSE' => ['FALSE', false],
+    'true' => ['true', true],
+    'on' => ['on', true],
+    'yes' => ['yes', true],
+    'one' => ['1', true],
+    'other text' => ['red', true],
+]);

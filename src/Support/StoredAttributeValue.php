@@ -34,8 +34,17 @@ final readonly class StoredAttributeValue implements Stringable
         return $this->value === null ? null : (float) $this->scalar();
     }
 
+    /**
+     * The value as a boolean. A string means what it says — `'false'`, `'off'`,
+     * `'no'`, `'0'` and `''` are false — parsed as the write path and the query
+     * scopes parse it; any other string is true.
+     */
     public function bool(): ?bool
     {
+        if (is_string($this->value)) {
+            return filter_var($this->value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? $this->value !== '';
+        }
+
         return $this->value === null ? null : (bool) $this->value;
     }
 
