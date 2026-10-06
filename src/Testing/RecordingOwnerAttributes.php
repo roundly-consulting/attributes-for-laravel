@@ -14,8 +14,9 @@ use RoundlyConsulting\Attributes\OwnerAttributes;
 /**
  * The owner handle under `Attributes::fake()`: every write passes through to
  * the real action and is recorded once it succeeds. `setMany()` (and so
- * `stage()->save()`) records one `set` per attribute; `forgetExcept()` records
- * one `forget` per attribute it removed.
+ * `stage()->save()`) records one `set` per attribute; `forget()` and
+ * `forgetExcept()` record one `forget` per attribute they removed — a name that
+ * was not attached is not recorded, as the real forget() does nothing for it.
  */
 final readonly class RecordingOwnerAttributes extends OwnerAttributes
 {
@@ -61,9 +62,19 @@ final readonly class RecordingOwnerAttributes extends OwnerAttributes
 
     public function forget(array|string $names, bool $forceDelete = false): int
     {
+        $names = is_string($names) ? [$names] : $names;
+
+        // Only names that are attached get removed (and announced) by the real forget();
+        // a name that never was is a no-op there, so it is not recorded here either.
+        $attached = $names === [] ? [] : $this->owner->attachedAttributes()
+            ->whereIn('name', $names)
+            ->pluck('name')
+            ->map(static fn (mixed $name): string => (string) $name)
+            ->all();
+
         $count = parent::forget($names, $forceDelete);
 
-        foreach (is_string($names) ? [$names] : $names as $name) {
+        foreach (array_unique(array_intersect($names, $attached)) as $name) {
             $this->fake->record(new RecordedWrite('forget', $this->owner, $name, forceDelete: $forceDelete));
         }
 

@@ -206,3 +206,25 @@ it('exposes the recorded writes', function (): void {
         ->and(array_map(static fn (RecordedWrite $write): string => $write->verb, $fake->recorded()))->toBe(['set', 'set', 'forget'])
         ->and($fake->recorded()[2]->forceDelete)->toBeTrue();
 });
+
+/**
+ * Chat review C-14 (owner: option A): `forget()` recorded every requested name, so a name
+ * that was never attached — a no-op with no event for the real forget() — still made
+ * assertForgotten() pass and assertNothingForgotten() fail. It records only the names
+ * actually removed now, as forgetExcept() always did.
+ */
+it('records a forget only for names that were attached', function (): void {
+    $product = Product::create();
+    $product->attachAttribute('color', 'red');
+    $fake = Attributes::fake();
+
+    $product->detachAttribute('never');
+
+    $fake->assertNothingForgotten();
+    expect(fn () => $fake->assertForgotten($product, 'never'))->toThrow(AssertionFailedError::class);
+
+    $product->detachAttributes(['color', 'never', 'color']);
+
+    $fake->assertForgotten($product, 'color');
+    expect(array_map(static fn (RecordedWrite $write): ?string => $write->name, $fake->recorded()))->toBe(['color']);
+});
