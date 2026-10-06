@@ -185,7 +185,8 @@ enum AttributeType: string
             );
         }
 
-        $encoded = json_encode($value);
+        // A whole-number float stays a float (`[2.0]`, not `[2]`) when read back.
+        $encoded = json_encode($value, JSON_PRESERVE_ZERO_FRACTION);
 
         if ($encoded === false) {
             throw InvalidAttributeValueException::forName(
