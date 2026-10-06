@@ -6,6 +6,8 @@ All notable changes to `attributes-for-laravel` are documented in this file. The
 
 ## Unreleased
 
+## 1.1.0 - 2026-10-06
+
 ### Added
 
 - Permanently deleting an owner (a model without `SoftDeletes`, or `forceDelete()`) removes its
@@ -24,6 +26,10 @@ All notable changes to `attributes-for-laravel` are documented in this file. The
   as `[2]` is matched by `[2]`, not by `[2.0]`.
 - Writing to an owner that is not saved (or was deleted) throws `AttributesException` instead
   of storing a row with no owner key.
+- Maintenance: `composer.json` `homepage` and `support.docs` now point to the documentation site.
+- Maintenance: CI also runs the test suite against MySQL 8, alongside SQLite and PostgreSQL.
+- Documentation: the README hero image uses an absolute URL, so it renders on Packagist and other
+  sites.
 
 ### Fixed
 
