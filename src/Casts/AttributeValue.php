@@ -12,12 +12,23 @@ use RoundlyConsulting\Attributes\Exceptions\InvalidAttributeValueException;
 use RoundlyConsulting\Attributes\Registry\AttributeRegistry;
 use RoundlyConsulting\Attributes\Support\AttributeValueCaster;
 use RoundlyConsulting\Attributes\Support\UniqueIndex;
+use WeakMap;
 
 /**
  * @implements CastsAttributes<mixed, mixed>
  */
 final class AttributeValue implements CastsAttributes
 {
+    /**
+     * Values set before the model knew its name and owner type — Eloquent's relation
+     * `create()` and the model factory fill the owner keys after the value, and an
+     * attributes array may list `value` before `name` — with the columns that early
+     * set wrote. {@see self::reapplyPending()} sets them again before the model saves.
+     *
+     * @var WeakMap<Model, array{key: string, raw: mixed, columns: array<string, mixed>}>|null
+     */
+    private static ?WeakMap $pending = null;
+
     /**
      * @param  array<string, mixed>  $attributes
      */
@@ -68,7 +79,7 @@ final class AttributeValue implements CastsAttributes
 
         $ownerType = $attributes['owner_type'] ?? null;
 
-        return [
+        $columns = [
             'value' => $stored->value,
             'value_type' => $stored->type->value,
             'is_encrypted' => $stored->encrypted,
@@ -76,6 +87,55 @@ final class AttributeValue implements CastsAttributes
                 ? null
                 : UniqueIndex::for($definition, is_string($ownerType) ? $ownerType : null, $plain->value),
         ];
+
+        self::remember($model, $key, $value, $columns, complete: $name !== null && is_string($ownerType) && $ownerType !== '');
+
+        return $columns;
+    }
+
+    /**
+     * Set a value again that was set before its name and owner type were known, now
+     * that they are — so its definition decides the type, the encryption and the
+     * unique hash. Skipped when the caller has since overwritten what the early set
+     * wrote (a factory state setting `value_type`, say): that is a deliberate choice.
+     *
+     * @internal called by the Attribute model's `saving` hook
+     */
+    public static function reapplyPending(Model $model): void
+    {
+        $pending = self::$pending[$model] ?? null;
+
+        if ($pending === null) {
+            return;
+        }
+
+        unset(self::$pending[$model]);
+
+        $current = $model->getAttributes();
+
+        foreach ($pending['columns'] as $column => $written) {
+            if (($current[$column] ?? null) !== $written) {
+                return;
+            }
+        }
+
+        $model->setAttribute($pending['key'], $pending['raw']);
+    }
+
+    /**
+     * @param  array<string, mixed>  $columns
+     */
+    private static function remember(Model $model, string $key, mixed $raw, array $columns, bool $complete): void
+    {
+        self::$pending ??= new WeakMap;
+
+        if ($complete) {
+            unset(self::$pending[$model]);
+
+            return;
+        }
+
+        self::$pending[$model] = ['key' => $key, 'raw' => $raw, 'columns' => $columns];
     }
 
     /**

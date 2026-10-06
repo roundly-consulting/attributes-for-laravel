@@ -137,12 +137,18 @@ class Attribute extends Model
     }
 
     /**
-     * A soft-deleted value gives up its unique slot, exactly as the pre-check never
-     * counted trashed rows — so a host calling `$attribute->delete()` directly frees
-     * the value too. (A host subclass overriding `booted()` calls `parent::booted()`.)
+     * A value set before its name and owner type (a relation `create()`, the factory)
+     * is set again before saving, so its definition applies. A soft-deleted value
+     * gives up its unique slot, exactly as the pre-check never counted trashed rows —
+     * so a host calling `$attribute->delete()` directly frees the value too. (A host
+     * subclass overriding `booted()` calls `parent::booted()`.)
      */
     protected static function booted(): void
     {
+        static::saving(static function (Attribute $attribute): void {
+            AttributeValue::reapplyPending($attribute);
+        });
+
         static::softDeleted(static function (Attribute $attribute): void {
             if ($attribute->unique_hash === null) {
                 return;
