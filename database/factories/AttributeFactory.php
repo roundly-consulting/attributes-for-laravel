@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace RoundlyConsulting\Attributes\Database\Factories;
 
 use Illuminate\Database\Eloquent\Factories\Factory;
+use RoundlyConsulting\Attributes\DataTransferObjects\StoredValue;
 use RoundlyConsulting\Attributes\Enums\AttributeType;
 use RoundlyConsulting\Attributes\Models\Attribute;
+use RoundlyConsulting\Attributes\Support\AttributeValueCaster;
 
 /**
  * @extends Factory<Attribute>
@@ -44,11 +46,27 @@ final class AttributeFactory extends Factory
         return $this->ofType(AttributeType::Boolean, $value);
     }
 
+    /**
+     * Store the value encrypted: the ciphertext and the flag together, so the model
+     * reads it back. Applied once the model is made, when the stored form is known.
+     */
     public function encrypted(): self
     {
-        return $this->state(fn (): array => [
-            'is_encrypted' => true,
-        ]);
+        return $this->afterMaking(static function (Attribute $attribute): void {
+            if ($attribute->is_encrypted) {
+                return;
+            }
+
+            $raw = $attribute->getAttributes();
+            $stored = $raw['value'] ?? null;
+
+            $sealed = new AttributeValueCaster()->seal(
+                new StoredValue($stored === null ? null : (string) $stored, $attribute->type()),
+                true,
+            );
+
+            $attribute->setRawAttributes([...$raw, 'value' => $sealed->value, 'is_encrypted' => true]);
+        });
     }
 
     /**
