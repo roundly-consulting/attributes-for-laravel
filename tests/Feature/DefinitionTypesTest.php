@@ -94,3 +94,32 @@ it('keeps inferring the type of an undefined attribute', function (): void {
     expect($product->fresh()->getAttachedAttributeValue('code'))->toBe('5')
         ->and($product->fresh()->getAttachedAttributeValue('count'))->toBe(5);
 });
+
+/**
+ * Chat review C-17: Laravel's `integer` rule is FILTER_VALIDATE_INT, which accepts a sign,
+ * surrounding whitespace and `-0`; the store accepted only the exact `(string) (int)`
+ * form, so those values passed validation and then threw — and as query needles they
+ * matched nothing.
+ */
+it('stores every string the integer rule accepts', function (string $given, int $stored): void {
+    Attributes::define(new AttributeDefinitionData('qty', AttributeType::Integer));
+
+    $product = Product::query()->create();
+    $product->attachAttribute('qty', $given);
+
+    expect(Attribute::query()->where('name', 'qty')->value('value'))->toBe((string) $stored)
+        ->and($product->fresh()->getAttachedAttributeValue('qty'))->toBe($stored)
+        ->and(Product::query()->whereAttribute('qty', $given)->count())->toBe(1);
+})->with([
+    'plus sign' => ['+5', 5],
+    'leading space' => [' 5', 5],
+    'trailing space' => ['5 ', 5],
+    'negative zero' => ['-0', 0],
+]);
+
+it('still refuses a string the integer rule refuses', function (string $given): void {
+    Attributes::define(new AttributeDefinitionData('qty', AttributeType::Integer));
+
+    expect(fn () => Product::query()->create()->attachAttribute('qty', $given))
+        ->toThrow(InvalidAttributeValueException::class);
+})->with(['leading zero' => ['05'], 'decimal' => ['5.5'], 'word' => ['five']]);

@@ -130,8 +130,10 @@ enum AttributeType: string
             return (int) $value;
         }
 
-        if (is_string($value) && $this->isIntegerString($value)) {
-            return (int) $value;
+        // Exactly what Laravel's `integer` rule (FILTER_VALIDATE_INT) accepts: a sign,
+        // surrounding whitespace and '-0' included, a leading zero ('05') not.
+        if (is_string($value) && ($int = filter_var($value, FILTER_VALIDATE_INT)) !== false) {
+            return $int;
         }
 
         throw InvalidAttributeValueException::forName(
@@ -249,10 +251,5 @@ enum AttributeType: string
         $decoded = json_decode($stored, true);
 
         return is_array($decoded) ? $decoded : [];
-    }
-
-    private function isIntegerString(string $value): bool
-    {
-        return (string) (int) $value === $value;
     }
 }
