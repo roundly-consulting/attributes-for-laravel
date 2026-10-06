@@ -50,6 +50,9 @@ final readonly class DetachAttributesAction
                 $deleted = $query->delete();
             }
 
+            // Reads prefer an eager-loaded relation; drop it so the next read sees the detach.
+            $owner->unsetRelation('attachedAttributes');
+
             $this->record($owner, $attached);
 
             $detached = $attached->pluck('name')->all();

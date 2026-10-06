@@ -173,6 +173,9 @@ final readonly class WriteAttributeAction
 
         AttributeAttached::dispatch($owner, $attribute);
 
+        // Reads prefer an eager-loaded relation; drop it so the next read sees this write.
+        $owner->unsetRelation('attachedAttributes');
+
         return $attribute;
     }
 
