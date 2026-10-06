@@ -77,6 +77,20 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Delete With Owner
+    |--------------------------------------------------------------------------
+    |
+    | Permanently deleting an owner (a model without SoftDeletes, or
+    | forceDelete()) removes its attribute rows too, freeing its unique
+    | values. Soft-deleting the owner keeps them. Recorded revisions are kept
+    | either way, as the audit trail. Accepts true/false, 1/0, on/off.
+    |
+    */
+
+    'delete_with_owner' => env('ATTRIBUTES_DELETE_WITH_OWNER', true),
+
+    /*
+    |--------------------------------------------------------------------------
     | History / Audit Trail
     |--------------------------------------------------------------------------
     |

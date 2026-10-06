@@ -27,6 +27,14 @@ final class AttributesConfig
         return Config::integer('attributes.prune_after_days', 30, min: 0);
     }
 
+    /**
+     * Whether permanently deleting an owner removes its attribute rows (default on).
+     */
+    public static function deleteWithOwner(): bool
+    {
+        return Config::boolean('attributes.delete_with_owner', true);
+    }
+
     public static function table(): string
     {
         return self::string('attributes.table', config('attributes.table'), 'attributes');

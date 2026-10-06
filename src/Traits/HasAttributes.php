@@ -19,6 +19,7 @@ use RoundlyConsulting\Attributes\Models\Attribute;
 use RoundlyConsulting\Attributes\Models\AttributeRevision;
 use RoundlyConsulting\Attributes\Registry\AttributeRegistry;
 use RoundlyConsulting\Attributes\Support\AttributeModel;
+use RoundlyConsulting\Attributes\Support\AttributesConfig;
 use RoundlyConsulting\Attributes\Support\AttributeValueCaster;
 use RoundlyConsulting\Attributes\Support\StoredAttributeValue;
 use RoundlyConsulting\Attributes\Support\TypedValueQuery;
@@ -35,6 +36,34 @@ use RoundlyConsulting\Attributes\Support\TypedValueQuery;
  */
 trait HasAttributes
 {
+    /**
+     * A permanently deleted owner (no SoftDeletes, or forceDelete()) takes its
+     * attribute rows with it, freeing its unique values — through the manager,
+     * so detached revisions, AttributeDetached and the fake see it. Soft-deleting
+     * the owner keeps them. Off with `attributes.delete_with_owner`.
+     */
+    public static function bootHasAttributes(): void
+    {
+        static::deleted(static function (self $owner): void {
+            if (! AttributesConfig::deleteWithOwner()) {
+                return;
+            }
+
+            if (method_exists($owner, 'isForceDeleting') && ! $owner->isForceDeleting()) {
+                return;
+            }
+
+            $names = array_values($owner->attachedAttributes()->withTrashed()->pluck('name')
+                ->map(static fn (mixed $name): string => (string) $name)
+                ->unique()
+                ->all());
+
+            if ($names !== []) {
+                app(AttributesManager::class)->for($owner)->forget($names, forceDelete: true);
+            }
+        });
+    }
+
     /**
      * @return MorphMany<Attribute, $this>
      */

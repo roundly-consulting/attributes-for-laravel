@@ -8,8 +8,8 @@ use Illuminate\Support\Facades\Schema;
 
 /**
  * The host-owned table the suite's attachable entities (Product, DefinedProduct,
- * MethodProduct, MalformedDefProduct) live in. It belongs to the fixture, not to the
- * package — attributes attaches through an unconstrained `nullableMorphs('owner')`
+ * MethodProduct, MalformedDefProduct, SoftDeletingProduct) live in. It belongs to
+ * the fixture, not to the package — attributes attaches through an unconstrained `nullableMorphs('owner')`
  * precisely so a host's entity can live in any table.
  *
  * No `down()`: forward-only is the standard, and the real-engine reset drops every table
@@ -22,6 +22,9 @@ return new class extends Migration
         Schema::create('products', function (Blueprint $table): void {
             $table->id();
             $table->timestamps();
+            // Only SoftDeletingProduct uses it: the delete-with-owner hook tells a soft
+            // delete from a permanent one.
+            $table->softDeletes();
         });
     }
 };
