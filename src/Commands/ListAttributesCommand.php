@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace RoundlyConsulting\Attributes\Commands;
 
 use Illuminate\Console\Command;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\Relation;
 use RoundlyConsulting\Attributes\Models\Attribute;
 use RoundlyConsulting\Attributes\Support\AttributeModel;
 
@@ -18,7 +20,9 @@ final class ListAttributesCommand extends Command
     {
         $model = AttributeModel::class();
 
-        $ownerType = $this->stringArgument('owner-type');
+        // Rows carry the morph alias under a morph map; a model class is mapped to it.
+        $given = $this->stringArgument('owner-type');
+        $ownerType = is_a($given, Model::class, true) ? Relation::getMorphAlias($given) : $given;
         $ownerId = $this->stringArgument('owner-id');
 
         $attributes = $model::query()
