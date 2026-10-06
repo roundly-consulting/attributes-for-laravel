@@ -27,6 +27,12 @@ use RoundlyConsulting\Attributes\Registry\AttributeRegistry;
  * the winner's row, and a concurrent writer of the same unique value surfaces as
  * DuplicateAttributeValueException.
  *
+ * The lookup never takes a lock on a row that does not exist: on InnoDB (REPEATABLE
+ * READ) a locking read that finds nothing takes a gap lock, and two such gap locks
+ * block each other's insert — a deadlock between concurrent first writes, even of
+ * different owners. So an existing row is found with a plain read and then locked by
+ * its primary key, and a missing one is inserted straight away.
+ *
  * @internal building block of the attach, sync and meta actions
  */
 final readonly class WriteAttributeAction
@@ -44,7 +50,7 @@ final readonly class WriteAttributeAction
      */
     public function execute(Model $owner, AttributeData $data, bool $metaOnly = false): Attribute
     {
-        $attribute = $this->lockRow($owner, $data->name) ?? $this->insertOrFindWinner($owner, $data, $metaOnly);
+        $attribute = $this->findAndLock($owner, $data->name) ?? $this->insertOrFindWinner($owner, $data, $metaOnly);
 
         if ($attribute->wasRecentlyCreated) {
             return $this->announce($owner, $attribute, null);
@@ -65,9 +71,34 @@ final readonly class WriteAttributeAction
     }
 
     /**
+     * The owner's row for the name, locked — or null when there is none to lock.
+     *
+     * A plain read finds it; the lock is then taken on its primary key, which locks
+     * that one record and no gap. A row deleted in between is simply not there: the
+     * write inserts instead.
+     *
      * @param  Model&HasAttributes  $owner
      */
-    private function lockRow(Model $owner, string $name): ?Attribute
+    private function findAndLock(Model $owner, string $name): ?Attribute
+    {
+        $found = $owner->attachedAttributes()->withTrashed()->where('name', $name)->first();
+
+        if ($found === null) {
+            return null;
+        }
+
+        return $owner->attachedAttributes()->withTrashed()->whereKey($found->getKey())->lockForUpdate()->first();
+    }
+
+    /**
+     * The row a concurrent writer just committed, locked. Only called after the
+     * insert hit a unique index, so the row exists when it was the owner + name
+     * index — a locking read is needed here, since a plain read on REPEATABLE READ
+     * would not see a row committed after the transaction's snapshot.
+     *
+     * @param  Model&HasAttributes  $owner
+     */
+    private function lockWinner(Model $owner, string $name): ?Attribute
     {
         return $owner->attachedAttributes()->withTrashed()->where('name', $name)->lockForUpdate()->first();
     }
@@ -89,7 +120,7 @@ final readonly class WriteAttributeAction
             $attribute->getConnection()->transaction(static fn (): bool => $attribute->save());
         } catch (UniqueConstraintViolationException $exception) {
             // No row for this owner + name means the unique value index fired instead.
-            return $this->lockRow($owner, $data->name) ?? throw $this->duplicate($owner, $data->name, $exception);
+            return $this->lockWinner($owner, $data->name) ?? throw $this->duplicate($owner, $data->name, $exception);
         }
 
         return $attribute;
