@@ -6,6 +6,48 @@ All notable changes to `attributes-for-laravel` are documented in this file. The
 
 ## Unreleased
 
+### Added
+
+- Permanently deleting an owner (a model without `SoftDeletes`, or `forceDelete()`) removes its
+  attribute rows and frees its unique values; soft-deleting it keeps them. Recorded revisions
+  are kept. On by default — turn it off with `attributes.delete_with_owner`
+  (`ATTRIBUTES_DELETE_WITH_OWNER`).
+
+### Changed
+
+- `bool()` and `attributeBool()` parse a string the way the write path does: `'false'`, `'off'`,
+  `'no'`, `'0'` and `''` read as `false` (they read as `true` before).
+- Under `Attributes::fake()`, `forget()` records only the names it actually removed, as
+  `forgetExcept()` already did — forgetting a name that was never attached records nothing.
+- Arrays keep whole-number floats (`[2.0]` is stored and read back as `[2.0]`, not `[2]`).
+  Equality and unique checks compare the stored JSON, so an array written before this release
+  as `[2]` is matched by `[2]`, not by `[2.0]`.
+- Writing to an owner that is not saved (or was deleted) throws `AttributesException` instead
+  of storing a row with no owner key.
+
+### Fixed
+
+- Two concurrent first writes on MySQL — of one owner, or of owners whose keys sit next to each
+  other — deadlocked (`1213`) instead of one updating the other's row.
+- A write did not refresh an eager-loaded `attachedAttributes` relation, so later reads (and
+  `validateAttributes()`) on the same model saw the old values.
+- A blank string under a `datetime` definition stored the current time; it is refused now.
+- An attribute created through the `attachedAttributes()` relation or the factory — or with
+  `value` listed before `name` — ignored its definition: encrypted values were stored in
+  plaintext, types and owner-scoped unique hashes were wrong.
+- `whereAttributeBetween()` with string bounds matched encrypted values and values of other
+  types.
+- `attr()->date()` and `attributeDate()` returned the current time for a blank or boolean value
+  and threw for other non-dates; they return `null`.
+- The factory's `encrypted()` state stored plaintext under the encrypted flag, and `ofType()`
+  ignored the type it was given.
+- The `Attribute` model documented a `$type` property that threw; use `type()`.
+- An `integer` definition refused `'+5'`, `' 5'` and `'-0'` after validation had accepted them.
+- `attributes:list` with an owner class name listed nothing when a morph map was in use.
+- `$attribute->restore()` brought a unique value back without its unique hash; it is protected
+  again, and restoring a value another owner holds by now throws
+  `DuplicateAttributeValueException`.
+
 ## 1.0.0 - 2026-10-03
 
 Initial public release.
