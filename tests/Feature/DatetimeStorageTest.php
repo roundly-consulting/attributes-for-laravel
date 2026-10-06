@@ -92,3 +92,20 @@ it('never matches a stored datetime with a blank needle', function (): void {
 
     Carbon::setTestNow();
 });
+
+/**
+ * Chat review C-15 (owner: option A): datetimes are kept to the second, like Laravel's own
+ * datetime cast — sub-seconds are dropped on write. Pinned, because equality, ranges,
+ * ordering and unique hashes all compare the stored text: changing the precision would
+ * split old rows from new ones.
+ */
+it('keeps datetimes to the second', function (): void {
+    $product = Product::query()->create();
+    $product->attachAttribute('starts_at', Carbon::parse('2026-01-01 10:00:00.750', 'UTC'));
+
+    $read = $product->fresh()->getAttachedAttributeValue('starts_at');
+
+    expect(Attribute::query()->where('name', 'starts_at')->value('value'))->toBe('2026-01-01T10:00:00+00:00')
+        ->and($read->format('H:i:s.u'))->toBe('10:00:00.000000')
+        ->and(Product::query()->whereAttribute('starts_at', Carbon::parse('2026-01-01 10:00:00.250', 'UTC'))->count())->toBe(1);
+});
