@@ -14,6 +14,7 @@ use Illuminate\Support\Collection;
 use RoundlyConsulting\Attributes\Casts\AttributeValue;
 use RoundlyConsulting\Attributes\Database\Factories\AttributeFactory;
 use RoundlyConsulting\Attributes\Enums\AttributeType;
+use RoundlyConsulting\Attributes\Exceptions\DuplicateAttributeValueException;
 use RoundlyConsulting\Attributes\Support\AttributeCollection;
 use RoundlyConsulting\Attributes\Support\AttributeModel;
 use RoundlyConsulting\Attributes\Support\AttributesConfig;
@@ -141,13 +142,39 @@ class Attribute extends Model
      * A value set before its name and owner type (a relation `create()`, the factory)
      * is set again before saving, so its definition applies. A soft-deleted value
      * gives up its unique slot, exactly as the pre-check never counted trashed rows —
-     * so a host calling `$attribute->delete()` directly frees the value too. (A host
-     * subclass overriding `booted()` calls `parent::booted()`.)
+     * so a host calling `$attribute->delete()` directly frees the value too — and a
+     * restored one takes it back, or is refused when another row holds the value by
+     * now. (A host subclass overriding `booted()` calls `parent::booted()`.)
      */
     protected static function booted(): void
     {
         static::saving(static function (Attribute $attribute): void {
             AttributeValue::reapplyPending($attribute);
+        });
+
+        static::restoring(static function (Attribute $attribute): void {
+            $definition = AttributeValue::definitionFor($attribute);
+
+            if ($definition === null || ! $definition->unique->enforces()) {
+                return;
+            }
+
+            $before = $attribute->getAttributes();
+
+            // Setting the value again recomputes the hash the soft delete cleared.
+            $attribute->value = $attribute->value;
+
+            $taken = $attribute->unique_hash !== null && $attribute->newQueryWithoutScopes()
+                ->where('unique_hash', $attribute->unique_hash)
+                ->whereKeyNot($attribute->getKey())
+                ->exists();
+
+            if ($taken) {
+                // Refused: the trashed row stays exactly as it was.
+                $attribute->setRawAttributes($before);
+
+                throw DuplicateAttributeValueException::forName($attribute->name, $definition->unique);
+            }
         });
 
         static::softDeleted(static function (Attribute $attribute): void {

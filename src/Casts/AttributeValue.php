@@ -7,6 +7,7 @@ namespace RoundlyConsulting\Attributes\Casts;
 use Illuminate\Contracts\Database\Eloquent\CastsAttributes;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
+use RoundlyConsulting\Attributes\DataTransferObjects\AttributeDefinitionData;
 use RoundlyConsulting\Attributes\Enums\AttributeType;
 use RoundlyConsulting\Attributes\Exceptions\InvalidAttributeValueException;
 use RoundlyConsulting\Attributes\Registry\AttributeRegistry;
@@ -59,9 +60,7 @@ final class AttributeValue implements CastsAttributes
     {
         $name = is_string($attributes['name'] ?? null) ? $attributes['name'] : null;
 
-        $definition = $name === null
-            ? null
-            : app(AttributeRegistry::class)->resolveFor($this->resolveOwner($model, $attributes), $name);
+        $definition = self::definition($model, $attributes);
 
         $caster = new AttributeValueCaster;
 
@@ -91,6 +90,17 @@ final class AttributeValue implements CastsAttributes
         self::remember($model, $key, $value, $columns, complete: $name !== null && is_string($ownerType) && $ownerType !== '');
 
         return $columns;
+    }
+
+    /**
+     * The definition a stored attribute's value falls under — the owner model's own
+     * schema first, then the global one — or null when its name has none.
+     *
+     * @internal used by the Attribute model's `restoring` hook
+     */
+    public static function definitionFor(Model $model): ?AttributeDefinitionData
+    {
+        return self::definition($model, $model->getAttributes());
     }
 
     /**
@@ -139,6 +149,18 @@ final class AttributeValue implements CastsAttributes
     }
 
     /**
+     * @param  array<string, mixed>  $attributes
+     */
+    private static function definition(Model $model, array $attributes): ?AttributeDefinitionData
+    {
+        $name = $attributes['name'] ?? null;
+
+        return is_string($name)
+            ? app(AttributeRegistry::class)->resolveFor(self::resolveOwner($model, $attributes), $name)
+            : null;
+    }
+
+    /**
      * Resolve the owner instance so per-model definitions are honoured.
      *
      * Uses the already-loaded relation when present, otherwise rebuilds a
@@ -147,7 +169,7 @@ final class AttributeValue implements CastsAttributes
      *
      * @param  array<string, mixed>  $attributes
      */
-    private function resolveOwner(Model $model, array $attributes): ?Model
+    private static function resolveOwner(Model $model, array $attributes): ?Model
     {
         if ($model->relationLoaded('owner')) {
             $loaded = $model->getRelation('owner');

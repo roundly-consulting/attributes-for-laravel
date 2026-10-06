@@ -177,3 +177,50 @@ it('names the attribute when a unique pre-check gets a value its type cannot tak
     expect(fn () => Attributes::assertUnique(Product::query()->create(), 'code', 'many'))
         ->toThrow(InvalidAttributeValueException::class, 'Attribute [code] has an invalid value');
 });
+
+/**
+ * Chat review C-20: a soft delete clears `unique_hash` so the value is free again, but a
+ * direct `restore()` brought the row back without it — the value was no longer protected,
+ * and restoring a value another owner had taken in the meantime made two live holders.
+ */
+it('recomputes the unique hash when a row is restored', function (bool $encrypted): void {
+    Attributes::define(new AttributeDefinitionData('sku', AttributeType::String_, unique: UniqueScope::Global_, encrypted: $encrypted));
+
+    $first = Product::query()->create();
+    $first->attachAttribute('sku', 'S1');
+    $row = $first->getAttachedAttribute('sku');
+    $row?->delete();
+
+    $row?->restore();
+
+    expect($row?->fresh()?->unique_hash)->not->toBeNull()
+        ->and(fn () => Product::query()->create()->attachAttribute('sku', 'S1'))
+        ->toThrow(DuplicateAttributeValueException::class);
+})->with(['plain' => false, 'encrypted' => true]);
+
+it('refuses to restore a value another owner took in the meantime', function (): void {
+    Attributes::define(new AttributeDefinitionData('sku', AttributeType::String_, unique: UniqueScope::Global_, encrypted: true));
+
+    $first = Product::query()->create();
+    $first->attachAttribute('sku', 'S2');
+    $row = $first->getAttachedAttribute('sku');
+    $row?->delete();
+
+    Product::query()->create()->attachAttribute('sku', 'S2');
+
+    expect(fn () => $row?->restore())->toThrow(DuplicateAttributeValueException::class)
+        ->and($row?->fresh()?->trashed())->toBeTrue()
+        ->and($row?->isDirty())->toBeFalse();
+});
+
+it('restores a row without a unique definition as it was', function (): void {
+    $product = Product::query()->create();
+    $product->attachAttribute('color', 'red');
+    $row = $product->getAttachedAttribute('color');
+    $row?->delete();
+
+    $row?->restore();
+
+    expect($row?->fresh()?->unique_hash)->toBeNull()
+        ->and($product->getAttachedAttributeValue('color'))->toBe('red');
+});
