@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace RoundlyConsulting\Attributes\Support;
 
+use Carbon\Exceptions\InvalidFormatException;
 use DateTimeInterface;
 use Illuminate\Support\Carbon;
 use Stringable;
@@ -69,7 +70,7 @@ final readonly class StoredAttributeValue implements Stringable
 
     /**
      * The value as a Carbon — null when unset or when it is not a date at all (an
-     * array, say), never "now".
+     * array, a boolean, a blank or unparsable string), never "now".
      */
     public function date(): ?Carbon
     {
@@ -77,11 +78,16 @@ final readonly class StoredAttributeValue implements Stringable
             return Carbon::instance($this->value);
         }
 
-        if (! is_scalar($this->value)) {
+        // Carbon parses '' (and so false) as "now"; a boolean is no date either.
+        if (! is_scalar($this->value) || is_bool($this->value) || trim((string) $this->value) === '') {
             return null;
         }
 
-        return Carbon::parse((string) $this->value);
+        try {
+            return Carbon::parse((string) $this->value);
+        } catch (InvalidFormatException) {
+            return null;
+        }
     }
 
     public function isNull(): bool

@@ -80,3 +80,31 @@ it('matches the typed reader methods for set and default values', function (): v
         ->and($product->attr('retries')->int())->toBe($product->attributeInt('retries'))
         ->and($product->attr('retries')->int())->toBe(3);
 });
+
+/**
+ * Chat review C-9: date() parsed any scalar — `''`, `false` and `' '` came back as now,
+ * and `true`, `5` or `'red'` threw InvalidFormatException — though its contract is "null
+ * when not a date, never now".
+ */
+it('reads a non-date as null, never now and never an exception', function (mixed $value): void {
+    Carbon::setTestNow('2026-10-06 12:00:00');
+
+    expect((new StoredAttributeValue($value))->date())->toBeNull();
+
+    Carbon::setTestNow();
+})->with([
+    'empty string' => [''],
+    'blank string' => [' '],
+    'false' => [false],
+    'true' => [true],
+    'integer' => [5],
+    'word' => ['red'],
+]);
+
+it('reads a stored non-date through attributeDate as null', function (): void {
+    $product = Product::query()->create();
+    $product->attachAttributes(['note' => '', 'color' => 'red']);
+
+    expect($product->attributeDate('note'))->toBeNull()
+        ->and($product->attributeDate('color'))->toBeNull();
+});
