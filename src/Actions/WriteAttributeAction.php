@@ -12,6 +12,7 @@ use RoundlyConsulting\Attributes\DataTransferObjects\RevisionData;
 use RoundlyConsulting\Attributes\Enums\RevisionType;
 use RoundlyConsulting\Attributes\Enums\UniqueScope;
 use RoundlyConsulting\Attributes\Events\AttributeAttached;
+use RoundlyConsulting\Attributes\Exceptions\AttributesException;
 use RoundlyConsulting\Attributes\Exceptions\DuplicateAttributeValueException;
 use RoundlyConsulting\Attributes\Models\Attribute;
 use RoundlyConsulting\Attributes\Registry\AttributeRegistry;
@@ -20,7 +21,8 @@ use RoundlyConsulting\Attributes\Registry\AttributeRegistry;
  * The raw upsert behind every attach, sync and meta write: one row per owner +
  * name (a soft-deleted row is restored, never duplicated), then the revision and
  * the event. It does not validate — callers run AttributeRegistry::assertWritable()
- * first — and it runs inside the caller's transaction.
+ * first — and it runs inside the caller's transaction. The owner must be saved: a
+ * write to an unsaved (or deleted) owner throws instead of inserting a keyless row.
  *
  * Two races are settled by the database rather than by the read before the write:
  * a concurrent insert of the same owner + name turns this write into an update of
@@ -50,6 +52,10 @@ final readonly class WriteAttributeAction
      */
     public function execute(Model $owner, AttributeData $data, bool $metaOnly = false): Attribute
     {
+        if (! $owner->exists || $owner->getKey() === null) {
+            throw AttributesException::unsavedOwner($data->name, $owner);
+        }
+
         $attribute = $this->findAndLock($owner, $data->name) ?? $this->insertOrFindWinner($owner, $data, $metaOnly);
 
         if ($attribute->wasRecentlyCreated) {
