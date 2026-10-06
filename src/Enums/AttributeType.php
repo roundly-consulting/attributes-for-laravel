@@ -203,7 +203,9 @@ enum AttributeType: string
             return CarbonImmutable::instance($value)->utc()->toIso8601String();
         }
 
-        if (is_string($value)) {
+        // A blank string is no date: Carbon would parse it as "now" (and Laravel's
+        // `date` rule skips it), so it is refused rather than stored as the current time.
+        if (is_string($value) && trim($value) !== '') {
             try {
                 return CarbonImmutable::parse($value)->utc()->toIso8601String();
             } catch (InvalidFormatException) {

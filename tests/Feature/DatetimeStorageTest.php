@@ -3,6 +3,10 @@
 declare(strict_types=1);
 
 use Illuminate\Support\Carbon;
+use RoundlyConsulting\Attributes\DataTransferObjects\AttributeDefinitionData;
+use RoundlyConsulting\Attributes\Enums\AttributeType;
+use RoundlyConsulting\Attributes\Exceptions\InvalidAttributeValueException;
+use RoundlyConsulting\Attributes\Facades\Attributes;
 use RoundlyConsulting\Attributes\Models\Attribute;
 use RoundlyConsulting\Attributes\Tests\Models\Product;
 
@@ -61,4 +65,30 @@ it('reads a datetime back as the same instant in the app timezone', function ():
     expect($read)->toBeInstanceOf(DateTimeInterface::class)
         ->and($read->getTimestamp())->toBe($written->getTimestamp())
         ->and($read->getTimezone()->getName())->toBe(date_default_timezone_get());
+});
+
+/**
+ * Chat review C-5: Laravel skips the `date` rule for a blank string, and
+ * `CarbonImmutable::parse('')` is now — so a blank datetime stored the current time.
+ */
+it('refuses a blank string for a datetime definition instead of storing now', function (string $blank): void {
+    Carbon::setTestNow('2026-10-06 12:34:56');
+    Attributes::define(new AttributeDefinitionData('published_at', AttributeType::DateTime));
+    $product = Product::query()->create();
+
+    expect(fn () => $product->attachAttribute('published_at', $blank))
+        ->toThrow(InvalidAttributeValueException::class, 'Attribute [published_at] has an invalid value')
+        ->and(Attribute::withTrashed()->count())->toBe(0);
+
+    Carbon::setTestNow();
+})->with(['empty' => '', 'whitespace' => '   ']);
+
+it('never matches a stored datetime with a blank needle', function (): void {
+    Carbon::setTestNow('2026-10-06 12:34:56');
+    Attributes::define(new AttributeDefinitionData('published_at', AttributeType::DateTime));
+    Product::query()->create()->attachAttribute('published_at', Carbon::now());
+
+    expect(Product::query()->whereAttribute('published_at', '')->count())->toBe(0);
+
+    Carbon::setTestNow();
 });
