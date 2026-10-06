@@ -380,7 +380,8 @@ trait HasAttributes
      *
      * Numeric bounds (in the name's defined type, else their own) compare
      * numerically against integer and float values; any other bounds compare as
-     * storage text — chronological for datetimes, which are stored in UTC.
+     * storage text — chronological for datetimes, which are stored in UTC — against
+     * values of the bounds' own types only. Encrypted values never match.
      *
      * @param  Builder<Model>  $query
      */
@@ -399,7 +400,14 @@ trait HasAttributes
                 return;
             }
 
-            $sub->whereBetween($sub->qualifyColumn('value'), [$low->value, $high->value]);
+            // Text comparison, by type as whereAttribute(): a bound matches only values
+            // of its own type family, and never an encrypted ciphertext.
+            $sub->whereIn(
+                $sub->qualifyColumn('value_type'),
+                array_values(array_unique([...TypedValueQuery::family($low->type), ...TypedValueQuery::family($high->type)])),
+            )
+                ->where($sub->qualifyColumn('is_encrypted'), false)
+                ->whereBetween($sub->qualifyColumn('value'), [$low->value, $high->value]);
         });
     }
 

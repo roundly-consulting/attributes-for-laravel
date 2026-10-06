@@ -135,3 +135,24 @@ it('matches nothing for an empty whereAttributeIn list', function (): void {
 
     expect(Product::query()->whereAttributeIn('code', [])->count())->toBe(0);
 });
+
+/**
+ * Chat review C-8: the text branch of whereAttributeBetween filtered on the name only, so
+ * an encrypted value's ciphertext (`eyJ…`) fell inside string bounds, and string bounds
+ * matched integer rows by their text — unlike whereAttribute, which compares by type.
+ */
+it('never ranges over an encrypted value', function (): void {
+    Attributes::define(new AttributeDefinitionData('token', AttributeType::String_, encrypted: true));
+    Product::query()->create()->attachAttribute('token', 'zzz');
+
+    expect(Product::query()->whereAttributeBetween('token', 'a', 'z')->count())->toBe(0);
+});
+
+it('ranges string bounds over string values only', function (): void {
+    $number = Product::query()->create();
+    $number->attachAttribute('code', 5);
+    $text = Product::query()->create();
+    $text->attachAttribute('code', '5x');
+
+    expect(Product::query()->whereAttributeBetween('code', '1', '9')->pluck('id')->all())->toBe([$text->getKey()]);
+});
