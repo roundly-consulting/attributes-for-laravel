@@ -28,11 +28,16 @@ final class AttributeFactory extends Factory
         ];
     }
 
+    /**
+     * A value stored in the given type — its storage form and `value_type` set
+     * explicitly, since a type inferred from the PHP value would store `5` as an
+     * integer even for a float.
+     */
     public function ofType(AttributeType $type, mixed $value): self
     {
-        // The model cast derives the stored form and value_type from the typed value.
         return $this->state(fn (): array => [
-            'value' => $value,
+            'value' => $value === null ? null : $type->toStorage($value),
+            'value_type' => $type->value,
         ]);
     }
 
