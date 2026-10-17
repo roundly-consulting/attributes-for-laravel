@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Factories\Factory;
 use RoundlyConsulting\Attributes\DataTransferObjects\StoredValue;
 use RoundlyConsulting\Attributes\Enums\AttributeType;
 use RoundlyConsulting\Attributes\Models\Attribute;
+use RoundlyConsulting\Attributes\Support\AttributeModel;
 use RoundlyConsulting\Attributes\Support\AttributeValueCaster;
 
 /**
@@ -16,6 +17,18 @@ use RoundlyConsulting\Attributes\Support\AttributeValueCaster;
 final class AttributeFactory extends Factory
 {
     protected $model = Attribute::class;
+
+    /**
+     * Build the configured model, not the packaged one: a host that swaps
+     * `attributes.model` gets its own class, with its casts,
+     * events and observers.
+     *
+     * @return class-string<Attribute>
+     */
+    public function modelName(): string
+    {
+        return AttributeModel::class();
+    }
 
     /**
      * @return array<model-property<Attribute>, mixed>
