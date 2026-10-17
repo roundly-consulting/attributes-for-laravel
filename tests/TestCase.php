@@ -11,6 +11,8 @@ use RoundlyConsulting\Testing\PackageTestCase;
 
 abstract class TestCase extends PackageTestCase
 {
+    private static ?string $appKey = null;
+
     /**
      * Every provider attributes hard-requires, in registration order.
      *
@@ -47,6 +49,15 @@ abstract class TestCase extends PackageTestCase
     }
 
     /**
+     * Migrate once per worker and schema signature; each test still starts on empty tables
+     * with the key counters where a fresh migrate leaves them.
+     */
+    protected function keepsMigratedSchema(): bool
+    {
+        return true;
+    }
+
+    /**
      * Attributes is one of the few packages that encrypts at rest — an `'encrypted' => true`
      * definition puts the value through Laravel's Crypt — so the suite needs a real
      * `app.key` or every encrypted read throws MissingAppKeyException.
@@ -59,7 +70,9 @@ abstract class TestCase extends PackageTestCase
     protected function configBeforeBoot(): array
     {
         return [
-            'app.key' => 'base64:'.base64_encode(random_bytes(32)),
+            // One key per process: the kept schema's signature holds the whole config, so a key
+            // per test would migrate every test afresh.
+            'app.key' => self::$appKey ??= 'base64:'.base64_encode(random_bytes(32)),
         ];
     }
 }
