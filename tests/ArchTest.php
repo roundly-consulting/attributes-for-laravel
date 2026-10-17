@@ -63,6 +63,13 @@ ArchPresets::noLocalCryptoPrimitives('RoundlyConsulting\Attributes');
 ArchPresets::modelsResolveThroughSeam(__DIR__.'/../src', 'Support');
 
 /**
+ * The factory half of the seam: AttributeFactory returns the AttributeModel seam from
+ * `modelName()`, so a host that swapped `attributes.model` gets its own rows (and events)
+ * out of `Attribute::factory()` instead of the packaged class.
+ */
+ArchPresets::factoriesResolveThroughSeam(__DIR__.'/../database/factories', __DIR__.'/../src', 'Support');
+
+/**
  * The Dependency Policy as a test. No `alsoAllow`: attributes' `require` ships only
  * php/illuminate/roundly, and the workflow installs test tooling with `--dev`, so nothing
  * legitimately lands in `require` that this must forgive. If it goes red the graph is
