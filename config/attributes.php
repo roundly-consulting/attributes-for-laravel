@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use RoundlyConsulting\Attributes\Http\Resources\RevisionActorResource;
 use RoundlyConsulting\Attributes\Models\Attribute;
 
 return [
@@ -47,6 +48,21 @@ return [
     */
 
     'key_type' => env('ATTRIBUTES_KEY_TYPE', 'bigint'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Actor Key Type
+    |--------------------------------------------------------------------------
+    |
+    | The key type of the polymorphic `actor` column on revisions (who made a
+    | change — usually your User model, which may use another key type than
+    | the models attributes attach to). Set it before running the migrations.
+    |
+    | Supported: "bigint", "uuid", "ulid"
+    |
+    */
+
+    'actor_key_type' => env('ATTRIBUTES_ACTOR_KEY_TYPE', 'bigint'),
 
     /*
     |--------------------------------------------------------------------------
@@ -104,6 +120,53 @@ return [
     'history' => [
         'enabled' => env('ATTRIBUTES_HISTORY', false),
         'table' => 'attribute_revisions',
+
+        // Who made each change. Off by default: it needs the actor columns the
+        // `update_attribute_revisions_add_actor` migration adds, so publish and
+        // run it first. The actor is the one named with
+        // Attributes::for($model)->by($user), else the one a resolver set with
+        // Attributes::resolveActorUsing() returns, else the authenticated user
+        // of `guard` (null = the default guard). Accepts true/false, 1/0, on/off.
+        'actor' => [
+            'enabled' => env('ATTRIBUTES_HISTORY_ACTOR', false),
+            'guard' => env('ATTRIBUTES_HISTORY_ACTOR_GUARD'),
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Whole-Set Validation
+    |--------------------------------------------------------------------------
+    |
+    | Off: each value is validated against its own definition alone. On: every
+    | value write (set, setMany, sync, staged saves) and validateAttributes()
+    | validate the owner's whole attribute set after the change in one pass,
+    | so rules may refer to other attributes (`required_if:type,physical`,
+    | `gte:min_price`). Attributes::for($model)->setValidated() always does.
+    | Accepts true/false, 1/0, on/off.
+    |
+    */
+
+    'validation' => [
+        'whole_set' => env('ATTRIBUTES_VALIDATE_WHOLE_SET', false),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | API Resources
+    |--------------------------------------------------------------------------
+    |
+    | `revision_actor` renders who made a revision (the `actor` of
+    | AttributeRevisionResource). The default gives `{id, type}`, where `type`
+    | is the actor model's class basename — never a class name. Point it at a
+    | JsonResource subclass of your own to add a name or an avatar; it
+    | receives the AttributeRevision (`actor_type`, `actor_id`, and the `actor`
+    | relation). Null = the default.
+    |
+    */
+
+    'resources' => [
+        'revision_actor' => RevisionActorResource::class,
     ],
 
     /*

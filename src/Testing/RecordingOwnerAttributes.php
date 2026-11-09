@@ -13,8 +13,8 @@ use RoundlyConsulting\Attributes\OwnerAttributes;
 
 /**
  * The owner handle under `Attributes::fake()`: every write passes through to
- * the real action and is recorded once it succeeds. `setMany()` (and so
- * `stage()->save()`) records one `set` per attribute; `forget()` and
+ * the real action and is recorded once it succeeds. `setMany()`, `setValidated()` (and
+ * so `stage()->save()`) record one `set` per attribute; `forget()` and
  * `forgetExcept()` record one `forget` per attribute they removed — a name that
  * was not attached is not recorded, as the real forget() does nothing for it.
  */
@@ -27,8 +27,15 @@ final readonly class RecordingOwnerAttributes extends OwnerAttributes
         private AttributesFake $fake,
         Container $container,
         Model $owner,
+        ?Model $actor = null,
+        bool $namesActor = false,
     ) {
-        parent::__construct($container, $owner);
+        parent::__construct($container, $owner, $actor, $namesActor);
+    }
+
+    public function by(?Model $actor): OwnerAttributes
+    {
+        return new self($this->fake, $this->container, $this->owner, self::assertActor($actor), true);
     }
 
     public function set(string $name, mixed $value = null, array|Collection|null $meta = null): Attribute
@@ -43,6 +50,17 @@ final readonly class RecordingOwnerAttributes extends OwnerAttributes
     public function setMany(array $attributes, array $meta = []): Collection
     {
         $written = parent::setMany($attributes, $meta);
+
+        foreach ($attributes as $name => $value) {
+            $this->fake->record(new RecordedWrite('set', $this->owner, (string) $name, $value, $this->toMeta($meta[$name] ?? null)));
+        }
+
+        return $written;
+    }
+
+    public function setValidated(array $attributes, array $meta = []): Collection
+    {
+        $written = parent::setValidated($attributes, $meta);
 
         foreach ($attributes as $name => $value) {
             $this->fake->record(new RecordedWrite('set', $this->owner, (string) $name, $value, $this->toMeta($meta[$name] ?? null)));

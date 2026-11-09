@@ -44,6 +44,8 @@ it('renders the attributes section without leaking the names or values it protec
             'Table',
             'Strict mode',
             'History',
+            'History actor',
+            'Whole-set validation',
             'Prune after',
             // The positive proof the definitions line reports rather than silently
             // rendering nothing: 3 defined, 2 of them encrypted.

@@ -8,7 +8,7 @@ use RoundlyConsulting\Attributes\Tests\Models\Product;
 use RoundlyConsulting\Testing\Database\DriverMatrix;
 
 /**
- * Attributes ships two CREATEs and zero foreign keys — both tables hang off an
+ * Attributes ships two CREATEs, one additive ALTER and zero foreign keys — both tables hang off an
  * unconstrained `nullableMorphs('owner')`, deliberately, because a host's attachable
  * entity can live in any table. Measured, not taken from the row spec.
  *
@@ -28,15 +28,15 @@ use RoundlyConsulting\Testing\Database\DriverMatrix;
 /**
  * P — the publish-only guards. The fleet publishes migrations timestamped rather than
  * auto-loading them; doing both runs both copies and dies on a duplicate table (bug #5, on
- * three packages). `count: 2` pins the file count so neither check can pass over an empty
+ * three packages). `count: 3` (two CREATEs + the additive revision actor) pins the file count so neither check can pass over an empty
  * or relocated directory.
  */
 it('never auto-loads its migrations — the host publishes them', function (): void {
     expect(AttributesServiceProvider::class)->toNotAutoLoadMigrations();
 });
 
-it('publishes both migrations timestamp-injected into the host', function (): void {
-    expect(AttributesServiceProvider::class)->toPublishMigrationsTimestamped('attributes-migrations', 2);
+it('publishes all three migrations timestamp-injected into the host', function (): void {
+    expect(AttributesServiceProvider::class)->toPublishMigrationsTimestamped('attributes-migrations', 3);
 });
 
 /**

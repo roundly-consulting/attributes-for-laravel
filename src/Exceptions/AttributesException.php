@@ -21,4 +21,15 @@ class AttributesException extends RuntimeException
             $owner::class,
         ));
     }
+
+    /**
+     * A revision actor that cannot be recorded: not an Eloquent model, or one without a row.
+     */
+    public static function invalidActor(mixed $actor): self
+    {
+        return new self(sprintf(
+            'A revision actor must be a saved Eloquent model or null, [%s] given.',
+            get_debug_type($actor),
+        ));
+    }
 }

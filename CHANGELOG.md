@@ -6,6 +6,36 @@ All notable changes to `attributes-for-laravel` are documented in this file. The
 
 ## Unreleased
 
+### Added
+
+- Revisions can record who made each change: turn on `attributes.history.actor.enabled`
+  (`ATTRIBUTES_HISTORY_ACTOR`) after publishing and running the new additive
+  `update_attribute_revisions_add_actor` migration (a nullable `actor` morph; key type
+  `attributes.actor_key_type`). The actor is the one a write names with
+  `Attributes::for($model)->by($user)`, else what `Attributes::resolveActorUsing()` returns, else
+  the authenticated user of `attributes.history.actor.guard`. `AttributeRevision` gains `actor()`,
+  `actorType()` and `actorId()`.
+- `AttributeRevisionResource` renders a revision for an API; its actor renders through the
+  swappable `attributes.resources.revision_actor` resource (default `{id, type}` with the class
+  basename — no class names over the wire).
+- Whole-set validation, so rules may refer to other attributes (`gte:min_price`,
+  `required_if:kind,physical`): `Attributes::for($model)->setValidated([...])` validates the stored
+  values overlaid by the new ones in one pass and writes all or nothing, with the owner's row locked
+  so concurrent writes of one owner validate one after another. `Attributes::validateSet()` validates
+  a complete set without writing. `attributes.validation.whole_set` (`ATTRIBUTES_VALIDATE_WHOLE_SET`,
+  off by default) routes `set()`, `setMany()`, staged saves, `sync()` and `validateAttributes()`
+  through it.
+- `about` shows the history-actor and whole-set-validation settings.
+
+### Changed
+
+- Requires `illuminate/http` (for the new resources).
+
+### Planned for the next major
+
+- `attributes.history.actor.enabled` defaults to on (history itself stays opt-in). Before
+  upgrading, publish and run the `update_attribute_revisions_add_actor` migration.
+
 ## 2.0.0 - 2026-11-07
 
 ### Changed

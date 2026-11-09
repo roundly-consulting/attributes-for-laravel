@@ -14,6 +14,7 @@ use RoundlyConsulting\Attributes\AttributesManager;
 use RoundlyConsulting\Attributes\Builders\AttributeWriter;
 use RoundlyConsulting\Attributes\Contracts\HasAttributes as HasAttributesContract;
 use RoundlyConsulting\Attributes\DataTransferObjects\StoredValue;
+use RoundlyConsulting\Attributes\Exceptions\InvalidAttributeValueException;
 use RoundlyConsulting\Attributes\Exceptions\MissingRequiredAttributeException;
 use RoundlyConsulting\Attributes\Models\Attribute;
 use RoundlyConsulting\Attributes\Models\AttributeRevision;
@@ -223,13 +224,17 @@ trait HasAttributes
     }
 
     /**
-     * Assert every required attribute is present and current values are valid.
+     * Assert every required attribute is present and current values are valid —
+     * each alone, or with `attributes.validation.whole_set` on, as one set (so rules
+     * may refer to other attributes).
      *
      * @throws MissingRequiredAttributeException
+     * @throws InvalidAttributeValueException
      */
     public function validateAttributes(): void
     {
         $registry = app(AttributeRegistry::class);
+        $wholeSet = $registry->validatesWholeSet();
 
         foreach ($registry->definitionsFor($this) as $definition) {
             $hasValue = $this->hasAttachedAttribute($definition->name);
@@ -238,9 +243,13 @@ trait HasAttributes
                 throw MissingRequiredAttributeException::forName($definition->name);
             }
 
-            if ($hasValue) {
+            if ($hasValue && ! $wholeSet) {
                 $registry->validateFor($this, $definition->name, $this->getAttachedAttributeValue($definition->name));
             }
+        }
+
+        if ($wholeSet) {
+            $registry->validateSet($this, $this->getAttachedAttributes()->all());
         }
     }
 

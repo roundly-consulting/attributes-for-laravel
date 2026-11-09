@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace RoundlyConsulting\Attributes\Facades;
 
+use Closure;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Facade;
 use RoundlyConsulting\Attributes\AttributesManager;
@@ -14,6 +15,7 @@ use RoundlyConsulting\Attributes\Testing\AttributesFake;
 /**
  * @method static OwnerAttributes for(Model $owner)
  * @method static int prune(?int $days = null)
+ * @method static AttributesManager resolveActorUsing(?Closure $resolver)
  * @method static AttributesManager define(AttributeDefinitionData $definition)
  * @method static AttributesManager defineMany(AttributeDefinitionData ...$definitions)
  * @method static bool has(string $name)
@@ -27,6 +29,7 @@ use RoundlyConsulting\Attributes\Testing\AttributesFake;
  * @method static list<string> requiredNames()
  * @method static void validate(string $name, mixed $value)
  * @method static void validateFor(?Model $owner, string $name, mixed $value)
+ * @method static void validateSet(Model $owner, array<string, mixed> $values)
  * @method static void assertUnique(Model $owner, string $name, mixed $value)
  * @method static bool isStrict()
  * @method static void assertKnown(string $name, ?Model $owner = null)

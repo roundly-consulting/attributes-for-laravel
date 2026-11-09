@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace RoundlyConsulting\Attributes;
 
+use Closure;
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Database\Eloquent\Model;
 use RoundlyConsulting\Attributes\Actions\PruneAttributesAction;
@@ -13,6 +14,7 @@ use RoundlyConsulting\Attributes\Exceptions\DuplicateAttributeValueException;
 use RoundlyConsulting\Attributes\Exceptions\InvalidAttributeValueException;
 use RoundlyConsulting\Attributes\Exceptions\UnknownAttributeException;
 use RoundlyConsulting\Attributes\Registry\AttributeRegistry;
+use RoundlyConsulting\Attributes\Support\RevisionActor;
 
 /**
  * The root of the `Attributes` facade and the injectable entry point to the
@@ -46,6 +48,20 @@ class AttributesManager
     public function prune(?int $days = null): int
     {
         return $this->container->make(PruneAttributesAction::class)->execute($days);
+    }
+
+    /**
+     * Decide who revisions record as their actor (`attributes.history.actor.enabled`)
+     * when a write names none with `for($owner)->by($user)`: the closure returns a
+     * saved model or null. Pass null to go back to the auth guard default.
+     *
+     * @param  (Closure(): mixed)|null  $resolver
+     */
+    public function resolveActorUsing(?Closure $resolver): static
+    {
+        $this->container->make(RevisionActor::class)->resolveUsing($resolver);
+
+        return $this;
     }
 
     // Definitions ------------------------------------------------------------
@@ -144,6 +160,20 @@ class AttributesManager
     public function validateFor(?Model $owner, string $name, mixed $value): void
     {
         $this->registry->validateFor($owner, $name, $value);
+    }
+
+    /**
+     * Validate a complete attribute set (name => value) for the owner in one pass,
+     * so rules may refer to other attributes. The error bag of the exception is
+     * keyed by attribute name.
+     *
+     * @param  array<string, mixed>  $values
+     *
+     * @throws InvalidAttributeValueException
+     */
+    public function validateSet(Model $owner, array $values): void
+    {
+        $this->registry->validateSet($owner, $values);
     }
 
     /**

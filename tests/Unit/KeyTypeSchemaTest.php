@@ -117,3 +117,46 @@ it('refuses to migrate on an unrecognized key type instead of falling back to bi
 
     Schema::dropIfExists('fallback_attributes');
 });
+
+it('adds a nullable actor morph to the revisions table', function (): void {
+    config()->set('attributes.actor_key_type', 'bigint');
+    config()->set('attributes.history.table', 'kt_actor_revisions');
+
+    Schema::dropIfExists('kt_actor_revisions');
+    runAttributesMigration('create_attribute_revisions_table.php');
+    runAttributesMigration('update_attribute_revisions_add_actor.php');
+
+    expect(Schema::hasColumns('kt_actor_revisions', ['actor_type', 'actor_id']))->toBeTrue();
+
+    DB::table('kt_actor_revisions')->insert(['name' => 'color', 'type' => 'attached']);
+
+    expect(DB::table('kt_actor_revisions')->value('actor_id'))->toBeNull();
+
+    Schema::dropIfExists('kt_actor_revisions');
+});
+
+it('renders the actor key type independently of the owner key type', function (string $keyType, string $expected): void {
+    config()->set('attributes.key_type', 'bigint');
+    config()->set('attributes.actor_key_type', $keyType);
+    config()->set('attributes.history.table', 'kt_actor_revisions');
+
+    Schema::dropIfExists('kt_actor_revisions');
+    runAttributesMigration('create_attribute_revisions_table.php');
+    runAttributesMigration('update_attribute_revisions_add_actor.php');
+
+    expect(attributesPgColumn('kt_actor_revisions', 'actor_id'))->toBe(['type' => $expected, 'nullable' => 'YES'])
+        ->and(attributesPgColumn('kt_actor_revisions', 'owner_id')['type'])->toBe('bigint');
+
+    Schema::dropIfExists('kt_actor_revisions');
+})->with([
+    'bigint' => ['bigint', 'bigint'],
+    'uuid' => ['uuid', 'uuid'],
+    'ulid' => ['ulid', 'character(26)'],
+])->skip($pgsqlOnly, 'needs the postgres catalog to tell the key types apart');
+
+it('refuses to add the actor on an unrecognized actor key type', function (): void {
+    config()->set('attributes.actor_key_type', 'nonsense');
+
+    expect(fn () => runAttributesMigration('update_attribute_revisions_add_actor.php'))
+        ->toThrow(InvalidConfigurationException::class, 'Configuration value [attributes.actor_key_type] must be one of [bigint, uuid, ulid] (case-insensitive), [nonsense] given.');
+});

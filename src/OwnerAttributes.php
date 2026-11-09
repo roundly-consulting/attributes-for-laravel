@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace RoundlyConsulting\Attributes;
 
+use Closure;
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
 use RoundlyConsulting\Attributes\Actions\AttachAttributeAction;
 use RoundlyConsulting\Attributes\Actions\AttachAttributesAction;
+use RoundlyConsulting\Attributes\Actions\AttachValidatedAttributesAction;
 use RoundlyConsulting\Attributes\Actions\DetachAttributesAction;
 use RoundlyConsulting\Attributes\Actions\DetachAttributesExceptAction;
 use RoundlyConsulting\Attributes\Actions\SyncAttributeMetaAction;
@@ -16,8 +18,10 @@ use RoundlyConsulting\Attributes\Actions\SyncAttributesAction;
 use RoundlyConsulting\Attributes\Builders\AttributeWriter;
 use RoundlyConsulting\Attributes\Contracts\HasAttributes;
 use RoundlyConsulting\Attributes\DataTransferObjects\AttributeData;
+use RoundlyConsulting\Attributes\Exceptions\AttributesException;
 use RoundlyConsulting\Attributes\Models\Attribute;
 use RoundlyConsulting\Attributes\Models\AttributeRevision;
+use RoundlyConsulting\Attributes\Support\RevisionActor;
 
 /**
  * One owner's attributes, returned by `Attributes::for($owner)`: reads, and
@@ -31,11 +35,26 @@ readonly class OwnerAttributes
 {
     /**
      * @param  Model&HasAttributes  $owner
+     * @param  bool  $namesActor  whether `$actor` was named with by() (null then means nobody)
      */
     public function __construct(
         protected Container $container,
         protected Model $owner,
+        protected ?Model $actor = null,
+        protected bool $namesActor = false,
     ) {}
+
+    /**
+     * The same handle, with `$actor` recorded as who made its writes' revisions
+     * (`attributes.history.actor.enabled`) instead of the resolver / auth guard
+     * default; `null` records nobody (a system change).
+     *
+     * @throws AttributesException when the actor has no row
+     */
+    public function by(?Model $actor): self
+    {
+        return new self($this->container, $this->owner, self::assertActor($actor), true);
+    }
 
     // Reads -------------------------------------------------------------------
 
@@ -103,8 +122,8 @@ readonly class OwnerAttributes
      */
     public function set(string $name, mixed $value = null, array|Collection|null $meta = null): Attribute
     {
-        return $this->container->make(AttachAttributeAction::class)
-            ->execute($this->owner, new AttributeData($name, $value, $this->toMeta($meta)));
+        return $this->asActor(fn (): Attribute => $this->container->make(AttachAttributeAction::class)
+            ->execute($this->owner, new AttributeData($name, $value, $this->toMeta($meta))));
     }
 
     /**
@@ -118,8 +137,25 @@ readonly class OwnerAttributes
      */
     public function setMany(array $attributes, array $meta = []): Collection
     {
-        return $this->container->make(AttachAttributesAction::class)
-            ->execute($this->owner, ...$this->toData($attributes, $meta));
+        return $this->asActor(fn (): Collection => $this->container->make(AttachAttributesAction::class)
+            ->execute($this->owner, ...$this->toData($attributes, $meta)));
+    }
+
+    /**
+     * Attach (or update) several attributes validated as one set, all or nothing:
+     * the owner's current values overlaid by these are validated in a single pass,
+     * so a definition's rules may refer to other attributes (`required_if:type,physical`,
+     * `gte:min_price`) — whether or not those are written in this call. Concurrent
+     * whole-set writes of one owner are serialized by a lock on the owner's row.
+     *
+     * @param  array<string, mixed>  $attributes  name => value
+     * @param  array<string, array<string, mixed>|Collection<string, mixed>>  $meta  name => meta
+     * @return Collection<int, Attribute>
+     */
+    public function setValidated(array $attributes, array $meta = []): Collection
+    {
+        return $this->asActor(fn (): Collection => $this->container->make(AttachValidatedAttributesAction::class)
+            ->execute($this->owner, ...$this->toData($attributes, $meta)));
     }
 
     /**
@@ -132,8 +168,8 @@ readonly class OwnerAttributes
      */
     public function sync(array $attributes, bool $forceDelete = false, array $meta = []): Collection
     {
-        return $this->container->make(SyncAttributesAction::class)
-            ->execute($this->owner, $this->toData($attributes, $meta), $forceDelete);
+        return $this->asActor(fn (): Collection => $this->container->make(SyncAttributesAction::class)
+            ->execute($this->owner, $this->toData($attributes, $meta), $forceDelete));
     }
 
     /**
@@ -144,8 +180,8 @@ readonly class OwnerAttributes
      */
     public function forget(array|string $names, bool $forceDelete = false): int
     {
-        return $this->container->make(DetachAttributesAction::class)
-            ->execute($this->owner, is_string($names) ? [$names] : $names, $forceDelete);
+        return $this->asActor(fn (): int => $this->container->make(DetachAttributesAction::class)
+            ->execute($this->owner, is_string($names) ? [$names] : $names, $forceDelete));
     }
 
     /**
@@ -157,8 +193,8 @@ readonly class OwnerAttributes
      */
     public function forgetExcept(array $keep, bool $forceDelete = false): array
     {
-        return $this->container->make(DetachAttributesExceptAction::class)
-            ->execute($this->owner, $keep, $forceDelete);
+        return $this->asActor(fn (): array => $this->container->make(DetachAttributesExceptAction::class)
+            ->execute($this->owner, $keep, $forceDelete));
     }
 
     /**
@@ -170,8 +206,8 @@ readonly class OwnerAttributes
      */
     public function meta(string $name, array|Collection|null $meta): Attribute
     {
-        return $this->container->make(SyncAttributeMetaAction::class)
-            ->execute($this->owner, $name, $this->toMeta($meta));
+        return $this->asActor(fn (): Attribute => $this->container->make(SyncAttributeMetaAction::class)
+            ->execute($this->owner, $name, $this->toMeta($meta)));
     }
 
     /**
@@ -181,6 +217,32 @@ readonly class OwnerAttributes
     public function stage(): AttributeWriter
     {
         return new AttributeWriter($this, $this->owner);
+    }
+
+    /**
+     * Run a write with the actor named by by(), if one was.
+     *
+     * @template TResult
+     *
+     * @param  Closure(): TResult  $write
+     * @return TResult
+     */
+    protected function asActor(Closure $write): mixed
+    {
+        if (! $this->namesActor) {
+            return $write();
+        }
+
+        return $this->container->make(RevisionActor::class)->using($this->actor, $write);
+    }
+
+    protected static function assertActor(?Model $actor): ?Model
+    {
+        if ($actor !== null && ! RevisionActor::saved($actor)) {
+            throw AttributesException::invalidActor($actor);
+        }
+
+        return $actor;
     }
 
     /**

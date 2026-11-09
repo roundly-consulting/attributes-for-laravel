@@ -26,6 +26,8 @@ use RoundlyConsulting\Attributes\Support\AttributesConfig;
  * @property string|null $new_value_type
  * @property Collection<string, mixed>|null $old_meta
  * @property Collection<string, mixed>|null $new_meta
+ * @property string|null $actor_type
+ * @property int|string|null $actor_id
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property Carbon|null $deleted_at
@@ -54,6 +56,38 @@ final class AttributeRevision extends Model
     public function owner(): MorphTo
     {
         return $this->morphTo();
+    }
+
+    /**
+     * Who made the change (`attributes.history.actor.enabled`); null for a change
+     * nobody was recorded for.
+     *
+     * @return MorphTo<Model, $this>
+     */
+    public function actor(): MorphTo
+    {
+        return $this->morphTo();
+    }
+
+    /**
+     * The actor's morph type — null when none was recorded, and also when the actor
+     * columns were never migrated (so reading it never trips a strict model).
+     */
+    public function actorType(): ?string
+    {
+        $type = $this->getAttributes()['actor_type'] ?? null;
+
+        return $type === null ? null : (string) $type;
+    }
+
+    /**
+     * The actor's key, or null (see {@see actorType()}).
+     */
+    public function actorId(): int|string|null
+    {
+        $id = $this->getAttributes()['actor_id'] ?? null;
+
+        return is_int($id) || is_string($id) ? $id : null;
     }
 
     protected static function newFactory(): AttributeRevisionFactory

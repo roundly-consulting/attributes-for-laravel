@@ -10,6 +10,7 @@ use RoundlyConsulting\Attributes\Registry\AttributeRegistry;
 use RoundlyConsulting\Attributes\Registry\DefinitionFactory;
 use RoundlyConsulting\Attributes\Support\AttributeModel;
 use RoundlyConsulting\Attributes\Support\AttributesConfig;
+use RoundlyConsulting\Attributes\Support\RevisionActor;
 use RoundlyConsulting\PackageToolkit\Concerns\RegistersBlueprintMacros;
 use RoundlyConsulting\PackageToolkit\Exceptions\InvalidConfigurationException;
 use RoundlyConsulting\PackageToolkit\Package;
@@ -35,6 +36,8 @@ final class AttributesServiceProvider extends PackageServiceProvider
                 'Table' => self::table(),
                 'Strict mode' => Config::boolean('attributes.strict') ? 'ON' : 'OFF',
                 'History' => Config::boolean('attributes.history.enabled') ? 'ON' : 'OFF',
+                'History actor' => AttributesConfig::recordsActor() ? 'ON' : 'OFF',
+                'Whole-set validation' => AttributesConfig::validatesWholeSet() ? 'ON' : 'OFF',
                 'Prune after' => self::pruneAfterDays().' day(s)',
                 // Definitions are reported by count only: an attribute name is a
                 // host's field name (api_token, ssn, …) and often names the very
@@ -49,6 +52,7 @@ final class AttributesServiceProvider extends PackageServiceProvider
 
         $this->app->singleton(AttributeRegistry::class);
         $this->app->singleton(AttributesManager::class);
+        $this->app->singleton(RevisionActor::class);
     }
 
     public function boot(): void

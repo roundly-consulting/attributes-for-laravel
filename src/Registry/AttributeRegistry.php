@@ -14,6 +14,7 @@ use RoundlyConsulting\Attributes\Exceptions\InvalidAttributeValueException;
 use RoundlyConsulting\Attributes\Exceptions\UnknownAttributeException;
 use RoundlyConsulting\Attributes\Models\Attribute;
 use RoundlyConsulting\Attributes\Support\AttributeModel;
+use RoundlyConsulting\Attributes\Support\AttributesConfig;
 use RoundlyConsulting\Attributes\Support\AttributeValueCaster;
 use RoundlyConsulting\Attributes\Support\UniqueIndex;
 use RoundlyConsulting\PackageToolkit\Support\Config;
@@ -171,6 +172,83 @@ final class AttributeRegistry
     }
 
     /**
+     * Validate an owner's whole attribute set in one pass, so a definition's rules
+     * may refer to other attributes (`required_if:type,physical`, `gte:min_price`).
+     * `$values` is the complete set (name => value) the owner would hold. Every
+     * definition's rules run — a defined name absent from the set too, so implicit
+     * rules (`required_if`, `required_with`) fire — with `nullable` and the type rule
+     * prepended: a null value passes every rule but the implicit ones. Free-form
+     * names carry no rules but can be referred to.
+     *
+     * A name with a dot is taken literally; a rule referring to one escapes it
+     * (`gte:dimensions\.width`).
+     *
+     * @param  array<string, mixed>  $values
+     *
+     * @throws InvalidAttributeValueException with an error bag keyed by attribute name
+     */
+    public function validateSet(Model $owner, array $values): void
+    {
+        $rules = [];
+        $names = [];
+
+        foreach ($this->definitionsFor($owner) as $name => $definition) {
+            $key = str_replace('.', '\\.', $name);
+
+            $rules[$key] = ['nullable', $definition->type->validationRule(), ...$definition->rules];
+            $names[$name] = $name;
+        }
+
+        if ($rules === []) {
+            return;
+        }
+
+        $validator = Validator::make($values, $rules, [], $names);
+
+        if ($validator->fails()) {
+            throw InvalidAttributeValueException::failedSetValidation($validator->errors());
+        }
+    }
+
+    /**
+     * Whether every value write validates the owner's whole set
+     * (`attributes.validation.whole_set`).
+     */
+    public function validatesWholeSet(): bool
+    {
+        return AttributesConfig::validatesWholeSet();
+    }
+
+    /**
+     * Everything a whole-set write must pass: strict mode for each written name, the
+     * set the owner holds after the write validated as one, and each written value's
+     * unique scope. The set is the owner's stored values overlaid by `$values` — or,
+     * with `$replace` (a sync), `$values` alone. Call it inside the write's
+     * transaction, after the owner's row is locked, so the stored values it reads are
+     * the ones the write lands on.
+     *
+     * @param  array<string, mixed>  $values  name => value being written
+     *
+     * @throws UnknownAttributeException
+     * @throws InvalidAttributeValueException
+     * @throws DuplicateAttributeValueException
+     */
+    public function assertWritableSet(Model $owner, array $values, bool $replace = false): void
+    {
+        foreach (array_keys($values) as $name) {
+            $this->assertKnown((string) $name, $owner);
+        }
+
+        $set = $replace ? $values : array_replace($this->storedValues($owner), $values);
+
+        $this->validateSet($owner, $set);
+
+        foreach ($values as $name => $value) {
+            $this->assertUnique($owner, (string) $name, $value);
+        }
+    }
+
+    /**
      * Everything a write must pass before it touches the database: strict mode
      * (honouring the owner's own schema), the definition's rules and its unique
      * scope. The batch writers run it for every item before the first write.
@@ -300,6 +378,29 @@ final class AttributeRegistry
         }
 
         return [];
+    }
+
+    /**
+     * The owner's stored values, read fresh (never an eager-loaded relation).
+     *
+     * @return array<string, mixed>
+     */
+    private function storedValues(Model $owner): array
+    {
+        $values = [];
+
+        $rows = $this->attributeModel()->newQuery()
+            ->where('owner_type', $owner->getMorphClass())
+            ->where('owner_id', $owner->getKey())
+            ->get();
+
+        foreach ($rows as $attribute) {
+            // The value cast resolves the definition (type, encryption) through the owner.
+            $attribute->setRelation('owner', $owner);
+            $values[$attribute->name] = $attribute->value;
+        }
+
+        return $values;
     }
 
     private function attributeModel(): Attribute

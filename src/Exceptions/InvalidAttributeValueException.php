@@ -13,6 +13,12 @@ final class InvalidAttributeValueException extends AttributesException
 
     private ?MessageBag $errors = null;
 
+    /**
+     * Whether the error bag is keyed by attribute name (a whole-set validation)
+     * rather than holding one attribute's messages under `value`.
+     */
+    private bool $keyedByName = false;
+
     public static function forName(string $name, string $reason, ?Throwable $previous = null): self
     {
         $exception = new self("Attribute [{$name}] has an invalid value: {$reason}", 0, $previous);
@@ -34,6 +40,23 @@ final class InvalidAttributeValueException extends AttributesException
         return $exception;
     }
 
+    /**
+     * A whole-set validation failed: the error bag is keyed by attribute name, and
+     * `attributeName` is the first attribute that failed.
+     */
+    public static function failedSetValidation(MessageBag $errors): self
+    {
+        $name = (string) array_key_first($errors->messages());
+
+        $exception = new self("Attribute [{$name}] failed validation: ".$errors->first($name));
+
+        $exception->attributeName = $name;
+        $exception->errors = $errors;
+        $exception->keyedByName = true;
+
+        return $exception;
+    }
+
     public function errorBag(): ?MessageBag
     {
         return $this->errors;
@@ -48,6 +71,18 @@ final class InvalidAttributeValueException extends AttributesException
     {
         if ($this->errors === null) {
             return [];
+        }
+
+        if ($this->keyedByName) {
+            $messages = [];
+
+            foreach ($this->errors->messages() as $key => $list) {
+                foreach ($list as $message) {
+                    $messages[] = "{$key}: {$message}";
+                }
+            }
+
+            return $messages;
         }
 
         $name = $this->attributeName ?? 'value';

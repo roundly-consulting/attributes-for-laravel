@@ -7,6 +7,8 @@ namespace RoundlyConsulting\Attributes\Actions;
 use Illuminate\Database\Eloquent\Model;
 use RoundlyConsulting\Attributes\DataTransferObjects\RevisionData;
 use RoundlyConsulting\Attributes\Models\AttributeRevision;
+use RoundlyConsulting\Attributes\Support\AttributesConfig;
+use RoundlyConsulting\Attributes\Support\RevisionActor;
 use RoundlyConsulting\PackageToolkit\Support\Config;
 
 /**
@@ -15,10 +17,13 @@ use RoundlyConsulting\PackageToolkit\Support\Config;
  */
 final readonly class RecordAttributeRevisionAction
 {
+    public function __construct(private RevisionActor $actor) {}
+
     /**
      * Persist a revision for an owner's attribute change.
      *
-     * A cheap no-op when history is disabled in config.
+     * A cheap no-op when history is disabled in config. With
+     * `attributes.history.actor.enabled`, who made the change is recorded too.
      */
     public function execute(Model $owner, RevisionData $data): ?AttributeRevision
     {
@@ -27,6 +32,7 @@ final readonly class RecordAttributeRevisionAction
         }
 
         return AttributeRevision::query()->create([
+            ...$this->actorColumns(),
             'owner_type' => $owner->getMorphClass(),
             'owner_id' => $owner->getKey(),
             'name' => $data->name,
@@ -43,5 +49,29 @@ final readonly class RecordAttributeRevisionAction
     public function enabled(): bool
     {
         return Config::boolean('attributes.history.enabled');
+    }
+
+    /**
+     * @return array<model-property<AttributeRevision>, int|string|null>
+     */
+    private function actorColumns(): array
+    {
+        if (! AttributesConfig::recordsActor()) {
+            return [];
+        }
+
+        $actor = $this->actor->current();
+
+        return [
+            'actor_type' => $actor?->getMorphClass(),
+            'actor_id' => self::key($actor),
+        ];
+    }
+
+    private static function key(?Model $actor): int|string|null
+    {
+        $key = $actor?->getKey();
+
+        return is_int($key) || is_string($key) ? $key : null;
     }
 }
