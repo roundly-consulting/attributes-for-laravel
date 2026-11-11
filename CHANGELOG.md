@@ -4,6 +4,26 @@ All notable changes to `attributes-for-laravel` are documented in this file. The
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Added
+
+- `'unique' => 'scope'` (`UniqueScope::Scope`): a value is unique per owner type **within a scope
+  model** the owner resolves — a team, a tenant — instead of across every owner of the type. Name
+  the scope with the definition's new `unique_scope` key (an attribute or relation name on the
+  owner such as `team_id` / `team`, or the class-string of an invokable implementing the new
+  `Contracts\ResolvesUniqueScope`), with a closure in `AttributeDefinitionData`'s new
+  `uniqueScope` argument, or for every scoped definition at once with the new
+  `attributes.unique_scope` setting. Backed by the existing `unique_hash` unique index, so
+  concurrent writers are still settled by the database — no migration needed. An owner that
+  resolves no scope is refused (`AttributesException`), never checked against a shared pool. A
+  `unique_scope` on a definition that is not `'scope'` throws instead of being ignored.
+
+### Planned for the next major
+
+- `'unique' => 'owner'` is renamed `'owner_type'`: it has always meant one pool per owner type,
+  which in a multi-tenant app spans every tenant. Use `'scope'` for per-tenant uniqueness.
+
 ## 2.1.0 - 2026-11-09
 
 ### Added

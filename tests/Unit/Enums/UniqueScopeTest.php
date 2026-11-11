@@ -8,6 +8,7 @@ use RoundlyConsulting\PackageToolkit\Exceptions\InvalidConfigurationException;
 it('parses unique scope from config strings', function (): void {
     expect(UniqueScope::fromConfig('owner'))->toBe(UniqueScope::Owner)
         ->and(UniqueScope::fromConfig('global'))->toBe(UniqueScope::Global_)
+        ->and(UniqueScope::fromConfig('scope'))->toBe(UniqueScope::Scope)
         ->and(UniqueScope::fromConfig('none'))->toBe(UniqueScope::None);
 });
 
@@ -29,18 +30,20 @@ it('throws for an unknown string or a non-string instead of switching uniqueness
 it('reports whether it enforces uniqueness', function (): void {
     expect(UniqueScope::None->enforces())->toBeFalse()
         ->and(UniqueScope::Owner->enforces())->toBeTrue()
-        ->and(UniqueScope::Global_->enforces())->toBeTrue();
+        ->and(UniqueScope::Global_->enforces())->toBeTrue()
+        ->and(UniqueScope::Scope->enforces())->toBeTrue();
 });
 
 it('exposes the backed values and labels', function (): void {
-    expect(UniqueScope::values()->all())->toBe(['none', 'owner', 'global'])
+    expect(UniqueScope::values()->all())->toBe(['none', 'owner', 'global', 'scope'])
         ->and(UniqueScope::toOptions()->all())->toBe([
             'none' => 'None',
             'owner' => 'Owner',
             'global' => 'Global',
+            'scope' => 'Scope',
         ]);
 });
 
 it('exposes the trait membership validation rule', function (): void {
-    expect(UniqueScope::validationRule())->toBe('in:none,owner,global');
+    expect(UniqueScope::validationRule())->toBe('in:none,owner,global,scope');
 });

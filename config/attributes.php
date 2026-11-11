@@ -171,6 +171,23 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Unique Scope
+    |--------------------------------------------------------------------------
+    |
+    | What a `'unique' => 'scope'` definition without its own `unique_scope` is
+    | unique within — a team or tenant the owner belongs to. Either an
+    | attribute or relation name on the owner ('team_id', 'team') or the
+    | class-string of an invokable implementing
+    | RoundlyConsulting\Attributes\Contracts\ResolvesUniqueScope. An owner that
+    | resolves no scope is refused rather than checked against a shared pool.
+    | Null = no default (a scoped definition must then name its own).
+    |
+    */
+
+    'unique_scope' => null,
+
+    /*
+    |--------------------------------------------------------------------------
     | Attribute Definitions
     |--------------------------------------------------------------------------
     |
@@ -183,10 +200,17 @@ return [
     |   - rules:     additional Laravel validation rules.
     |   - required:  bool; enforced by $model->validateAttributes().
     |   - default:   value returned by reads when the attribute is not attached.
-    |   - unique:    'owner' (unique per owner type), 'global' (unique across
-    |                every owner), true (= owner), or false/'none' (default).
-    |                Backed by a unique index on a hash of the value — a keyed
-    |                blind index for encrypted values, so it covers them too.
+    |   - unique:    'owner' (unique per owner type, across every owner of that
+    |                type), 'scope' (unique per owner type within the scope
+    |                model the owner resolves — see unique_scope), 'global'
+    |                (unique across every owner), true (= owner), or
+    |                false/'none' (default). Backed by a unique index on a hash
+    |                of the value — a keyed blind index for encrypted values, so
+    |                it covers them too.
+    |   - unique_scope: for 'unique' => 'scope' only — an attribute or relation
+    |                name on the owner ('team_id', 'team') or a
+    |                ResolvesUniqueScope class-string. Defaults to the
+    |                `unique_scope` setting above.
     |   - encrypted: bool; stores the value as ciphertext via Crypt at rest.
     |
     | Models may also declare their own definitions via a public
@@ -201,6 +225,7 @@ return [
     |   'definitions' => [
     |       'rating' => ['type' => 'integer', 'rules' => ['min:1', 'max:5']],
     |       'sku'    => ['type' => 'string', 'unique' => 'global'],
+    |       'code'   => ['type' => 'string', 'unique' => 'scope', 'unique_scope' => 'team_id'],
     |       'token'  => ['type' => 'string', 'encrypted' => true],
     |       'retries'=> ['type' => 'integer', 'default' => 3],
     |   ],

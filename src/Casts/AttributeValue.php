@@ -9,10 +9,13 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use RoundlyConsulting\Attributes\DataTransferObjects\AttributeDefinitionData;
 use RoundlyConsulting\Attributes\Enums\AttributeType;
+use RoundlyConsulting\Attributes\Enums\UniqueScope;
+use RoundlyConsulting\Attributes\Exceptions\AttributesException;
 use RoundlyConsulting\Attributes\Exceptions\InvalidAttributeValueException;
 use RoundlyConsulting\Attributes\Registry\AttributeRegistry;
 use RoundlyConsulting\Attributes\Support\AttributeValueCaster;
 use RoundlyConsulting\Attributes\Support\UniqueIndex;
+use RoundlyConsulting\Attributes\Support\UniqueScopeKey;
 use WeakMap;
 
 /**
@@ -78,16 +81,27 @@ final class AttributeValue implements CastsAttributes
 
         $ownerType = $attributes['owner_type'] ?? null;
 
+        // A scope definition's hash needs the owner itself (its team, say); until its
+        // keys are known the value waits, like one set before its name.
+        $scopeKey = null;
+        $scopeKnown = true;
+
+        if ($definition !== null && $definition->unique === UniqueScope::Scope && $plain->value !== null) {
+            $owner = self::scopeOwner($model, $attributes, $definition->name);
+            $scopeKnown = $owner !== null;
+            $scopeKey = $owner === null ? null : UniqueScopeKey::for($definition, $owner);
+        }
+
         $columns = [
             'value' => $stored->value,
             'value_type' => $stored->type->value,
             'is_encrypted' => $stored->encrypted,
             'unique_hash' => $definition === null
                 ? null
-                : UniqueIndex::for($definition, is_string($ownerType) ? $ownerType : null, $plain->value),
+                : UniqueIndex::for($definition, is_string($ownerType) ? $ownerType : null, $plain->value, $scopeKey),
         ];
 
-        self::remember($model, $key, $value, $columns, complete: $name !== null && is_string($ownerType) && $ownerType !== '');
+        self::remember($model, $key, $value, $columns, complete: $name !== null && is_string($ownerType) && $ownerType !== '' && $scopeKnown);
 
         return $columns;
     }
@@ -191,6 +205,39 @@ final class AttributeValue implements CastsAttributes
         }
 
         return new $class;
+    }
+
+    /**
+     * The saved owner a scope definition's value resolves its scope from: the loaded
+     * relation (every package write sets it), else the row the owner keys point at —
+     * read directly, without global scopes, so neither preventLazyLoading nor a
+     * soft-deleted or tenant-scoped owner hides it. Null while the keys are not set;
+     * keys pointing at no row throw (the check fails closed).
+     *
+     * @param  array<string, mixed>  $attributes
+     */
+    private static function scopeOwner(Model $model, array $attributes, string $name): ?Model
+    {
+        if ($model->relationLoaded('owner') && $model->getRelation('owner') instanceof Model) {
+            return $model->getRelation('owner');
+        }
+
+        $type = $attributes['owner_type'] ?? null;
+        $id = $attributes['owner_id'] ?? null;
+
+        if (! is_string($type) || $type === '' || $id === null || $id === '') {
+            return null;
+        }
+
+        $owner = self::resolveOwner($model, $attributes)?->newQueryWithoutScopes()->find($id);
+
+        if (! $owner instanceof Model) {
+            throw AttributesException::unresolvedUniqueScope($name, null);
+        }
+
+        $model->setRelation('owner', $owner);
+
+        return $owner;
     }
 
     private function resolveType(mixed $rawType): AttributeType

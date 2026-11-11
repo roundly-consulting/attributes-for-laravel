@@ -17,9 +17,15 @@ enum UniqueScope: string
     case Global_ = 'global';
 
     /**
+     * Unique per owner type within a scope model the owner resolves (a team, a
+     * tenant) — named by the definition's `unique_scope` or `attributes.unique_scope`.
+     */
+    case Scope = 'scope';
+
+    /**
      * Resolve a uniqueness scope from a config value.
      *
-     * Accepts the backed strings ('owner', 'global', 'none'), booleans
+     * Accepts the backed strings ('owner', 'global', 'scope', 'none'), booleans
      * (true => owner-scoped, false => none), or null (none). Anything else — a typo
      * such as 'globl' — throws instead of silently switching uniqueness off.
      *

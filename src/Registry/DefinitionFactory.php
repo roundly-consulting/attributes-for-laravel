@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace RoundlyConsulting\Attributes\Registry;
 
+use Closure;
 use RoundlyConsulting\Attributes\DataTransferObjects\AttributeDefinitionData;
 use RoundlyConsulting\Attributes\Enums\AttributeType;
 use RoundlyConsulting\Attributes\Enums\UniqueScope;
@@ -61,15 +62,61 @@ final class DefinitionFactory
             "{$key}.encrypted" => $definition['encrypted'] ?? null,
         ]);
 
+        $unique = UniqueScope::fromConfig($definition['unique'] ?? null, "{$key}.unique");
+
         return new AttributeDefinitionData(
             name: $name,
             type: $read->enum("{$key}.type", AttributeType::class, AttributeType::String_),
             rules: self::rules("{$key}.rules", $definition['rules'] ?? null),
             default: $definition['default'] ?? null,
             required: $read->boolean("{$key}.required"),
-            unique: UniqueScope::fromConfig($definition['unique'] ?? null, "{$key}.unique"),
+            unique: $unique,
             encrypted: $read->boolean("{$key}.encrypted"),
+            uniqueScope: self::uniqueScope("{$key}.unique_scope", $definition['unique_scope'] ?? null, $unique),
         );
+    }
+
+    /**
+     * A `unique_scope` is only meaningful on a `unique => scope` definition: on any
+     * other it would look like tenant isolation while the value stays unique per owner
+     * type (or globally), so it throws instead of being ignored.
+     *
+     * @throws InvalidConfigurationException
+     */
+    private static function uniqueScope(string $key, mixed $scope, UniqueScope $unique): string|Closure|null
+    {
+        if ($scope === null) {
+            return null;
+        }
+
+        if ($unique !== UniqueScope::Scope) {
+            throw new InvalidConfigurationException(sprintf(
+                "Configuration value [%s] needs the definition's unique set to 'scope', [%s] given.",
+                $key,
+                $unique->value,
+            ));
+        }
+
+        return self::scopeResolver($key, $scope);
+    }
+
+    /**
+     * A scope resolver as written in a definition or in `attributes.unique_scope`: a
+     * non-blank attribute/relation name or class-string, or a closure.
+     *
+     * @throws InvalidConfigurationException
+     */
+    public static function scopeResolver(string $key, mixed $scope): string|Closure
+    {
+        if ($scope instanceof Closure || (is_string($scope) && trim($scope) !== '')) {
+            return $scope;
+        }
+
+        throw new InvalidConfigurationException(sprintf(
+            'Configuration value [%s] must be an attribute or relation name, a class-string or a closure, [%s] given.',
+            $key,
+            is_scalar($scope) ? var_export($scope, true) : get_debug_type($scope),
+        ));
     }
 
     /**

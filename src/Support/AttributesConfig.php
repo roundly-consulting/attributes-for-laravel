@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace RoundlyConsulting\Attributes\Support;
 
+use Closure;
 use Illuminate\Http\Resources\Json\JsonResource;
 use ReflectionClass;
 use RoundlyConsulting\Attributes\Http\Resources\RevisionActorResource;
+use RoundlyConsulting\Attributes\Registry\DefinitionFactory;
 use RoundlyConsulting\PackageToolkit\Enums\KeyType;
 use RoundlyConsulting\PackageToolkit\Exceptions\InvalidConfigurationException;
 use RoundlyConsulting\PackageToolkit\Support\Config;
@@ -85,6 +87,22 @@ final class AttributesConfig
     public static function validatesWholeSet(): bool
     {
         return Config::boolean('attributes.validation.whole_set');
+    }
+
+    /**
+     * The scope model a `unique => scope` definition without its own `unique_scope`
+     * is unique within (`attributes.unique_scope`): null when not set, otherwise a
+     * non-blank attribute/relation name, a class-string or a closure.
+     */
+    public static function uniqueScope(): string|Closure|null
+    {
+        $scope = config('attributes.unique_scope');
+
+        if ($scope === null || (is_string($scope) && trim($scope) === '')) {
+            return null;
+        }
+
+        return DefinitionFactory::scopeResolver('attributes.unique_scope', $scope);
     }
 
     /**

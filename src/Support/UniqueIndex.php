@@ -15,8 +15,10 @@ use RoundlyConsulting\Crypto\Hash\Hmac;
  * index on that column is what turns `unique` into a database-level guarantee:
  * two concurrent writers of the same value cannot both commit.
  *
- * The hash covers the scope, the owner type (owner scope only), the name and the
- * plain storage form. For an **encrypted** definition it is keyed — an HMAC under
+ * The hash covers the scope, the owner type (owner and scope scopes), the scope
+ * model's key (scope scope only — see UniqueScopeKey), the name and the plain
+ * storage form. The owner and global payloads are unchanged since 1.x, so existing
+ * hashes stay valid. For an **encrypted** definition it is keyed — an HMAC under
  * a key derived from the app key — so the index is a blind index: equal values
  * still collide, but the column reveals nothing a dictionary attack could use.
  * Plain values use an unkeyed digest (their text is in the `value` column anyway),
@@ -33,20 +35,35 @@ final class UniqueIndex
 
     /**
      * The hash for a value, or null when the definition does not enforce
-     * uniqueness or the value is null (nulls never collide).
+     * uniqueness or the value is null (nulls never collide) — or, for a scope
+     * definition, when no `$scopeKey` is given (the cast sets the value again once
+     * the owner is known).
      */
-    public static function for(AttributeDefinitionData $definition, ?string $ownerType, ?string $plainValue): ?string
+    public static function for(AttributeDefinitionData $definition, ?string $ownerType, ?string $plainValue, ?string $scopeKey = null): ?string
     {
         if (! $definition->unique->enforces() || $plainValue === null) {
             return null;
         }
 
-        $payload = self::encode([
-            $definition->unique->value,
-            $definition->unique === UniqueScope::Owner ? (string) $ownerType : '',
-            $definition->name,
-            $plainValue,
-        ]);
+        $payload = match ($definition->unique) {
+            UniqueScope::Scope => $scopeKey === null ? null : self::encode([
+                $definition->unique->value,
+                (string) $ownerType,
+                $scopeKey,
+                $definition->name,
+                $plainValue,
+            ]),
+            default => self::encode([
+                $definition->unique->value,
+                $definition->unique === UniqueScope::Owner ? (string) $ownerType : '',
+                $definition->name,
+                $plainValue,
+            ]),
+        };
+
+        if ($payload === null) {
+            return null;
+        }
 
         return new Digest()->withPepper($payload, $definition->encrypted ? self::key() : null);
     }

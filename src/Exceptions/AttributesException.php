@@ -32,4 +32,19 @@ class AttributesException extends RuntimeException
             get_debug_type($actor),
         ));
     }
+
+    /**
+     * A `unique => scope` value whose owner resolved no scope model — null, a blank
+     * key, an unsaved model, or no owner row at all. Refused rather than checked
+     * against some shared pool, so an owner without a tenant can never collide with
+     * (or learn about) another tenant's values.
+     */
+    public static function unresolvedUniqueScope(string $name, mixed $resolved): self
+    {
+        return new self(sprintf(
+            'Attribute [%s] is unique per scope, but its owner resolved no scope (%s); give the owner its scope model first.',
+            $name,
+            get_debug_type($resolved),
+        ));
+    }
 }

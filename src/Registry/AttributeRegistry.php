@@ -17,6 +17,7 @@ use RoundlyConsulting\Attributes\Support\AttributeModel;
 use RoundlyConsulting\Attributes\Support\AttributesConfig;
 use RoundlyConsulting\Attributes\Support\AttributeValueCaster;
 use RoundlyConsulting\Attributes\Support\UniqueIndex;
+use RoundlyConsulting\Attributes\Support\UniqueScopeKey;
 use RoundlyConsulting\PackageToolkit\Support\Config;
 
 /**
@@ -288,35 +289,52 @@ final class AttributeRegistry
             throw InvalidAttributeValueException::forName($name, "expected a value of type [{$definition->type->value}]", $exception);
         }
 
-        $hash = UniqueIndex::for($definition, $owner->getMorphClass(), $plain);
+        $scopeKey = $definition->unique === UniqueScope::Scope ? UniqueScopeKey::for($definition, $owner) : null;
 
-        $query = $this->attributeModel()->newQuery()
+        $hash = UniqueIndex::for($definition, $owner->getMorphClass(), $plain, $scopeKey);
+
+        $others = fn (): Builder => $this->attributeModel()->newQuery()
             ->where('name', $name)
-            ->where(function (Builder $match) use ($hash, $plain, $definition): void {
-                $match->where('unique_hash', $hash);
-
-                // A plain value stored before its definition became unique has no
-                // hash yet; its text is still comparable.
-                if (! $definition->encrypted) {
-                    $match->orWhere(fn (Builder $legacy): Builder => $legacy
-                        ->whereNull('unique_hash')
-                        ->where('is_encrypted', false)
-                        ->where('value', $plain));
-                }
+            ->when($definition->unique !== UniqueScope::Global_, fn (Builder $query): Builder => $query->where('owner_type', $owner->getMorphClass()))
+            ->where(function (Builder $sub) use ($owner): void {
+                $sub->where('owner_type', '!=', $owner->getMorphClass())
+                    ->orWhere('owner_id', '!=', $owner->getKey());
             });
 
-        if ($definition->unique === UniqueScope::Owner) {
-            $query->where('owner_type', $owner->getMorphClass());
-        }
-
-        $query->where(function (Builder $sub) use ($owner): void {
-            $sub->where('owner_type', '!=', $owner->getMorphClass())
-                ->orWhere('owner_id', '!=', $owner->getKey());
-        });
-
-        if ($query->exists()) {
+        if ($others()->where('unique_hash', $hash)->exists() || $this->holdsLegacyValue($others(), $definition, $plain, $scopeKey)) {
             throw DuplicateAttributeValueException::forName($name, $definition->unique);
         }
+    }
+
+    /**
+     * Whether another owner holds the plain value in a row stored before its
+     * definition became unique — no hash yet, but its text is still comparable. A
+     * scope definition counts only rows whose owner resolves the same scope.
+     * (Encrypted values have no comparable text.)
+     *
+     * @param  Builder<Attribute>  $others
+     */
+    private function holdsLegacyValue(Builder $others, AttributeDefinitionData $definition, string $plain, ?string $scopeKey): bool
+    {
+        if ($definition->encrypted) {
+            return false;
+        }
+
+        $others->whereNull('unique_hash')->where('is_encrypted', false)->where('value', $plain);
+
+        if ($scopeKey === null) {
+            return $others->exists();
+        }
+
+        foreach ($others->with('owner')->lazyById() as $row) {
+            $owner = $row->getRelation('owner');
+
+            if ($owner instanceof Model && UniqueScopeKey::for($definition, $owner) === $scopeKey) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public function isStrict(): bool
